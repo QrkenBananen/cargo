@@ -5653,3 +5653,54 @@ fn cargo_test_set_out_dir_env_var() {
     p.cargo("test --package foo --test case -- tests::test_add --exact --no-capture")
         .run();
 }
+
+#[cargo_test]
+fn debug_assert_is_ignored_in_doctest_if_release_flag_is_passed() {
+    let p = project()
+        .file(
+            "src/lib.rs",
+            r#"
+            //! ```
+            //! debug_assert!(false)
+            //! ```
+        "#,
+        )
+        .build();
+
+    p.cargo("test --doc")
+        .arg("--release")
+        .with_stdout_data(str![[r#"
+...
+running 1 test
+test src/lib.rs - (line 2) ... ok
+...
+"#]])
+        .run();
+}
+
+#[cargo_test]
+fn debug_assert_fails_in_doctest_if_release_flag_is_not_passed() {
+    let p = project()
+        .file(
+            "src/lib.rs",
+            r#"
+            //! ```
+            //! debug_assert!(false)
+            //! ```
+        "#,
+        )
+        .build();
+
+    p.cargo("test --doc")
+        .with_status(101)
+        .with_stdout_data(str![[r#"
+...
+running 1 test
+test src/lib.rs - (line 2) ... FAILED
+...
+thread 'main' ([..]) panicked at src/lib.rs:3:1:
+assertion failed: false
+...
+"#]])
+        .run();
+}
