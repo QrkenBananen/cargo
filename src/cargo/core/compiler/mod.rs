@@ -1230,21 +1230,12 @@ fn build_base_args(
 
     let bcx = build_runner.bcx;
     let Profile {
-        ref opt_level,
         codegen_backend,
-        codegen_units,
-        debuginfo,
-        debug_assertions,
-        split_debuginfo,
-        overflow_checks,
-        rpath,
         ref panic,
         incremental,
-        strip,
         rustflags: profile_rustflags,
         trim_paths,
         hint_mostly_unused: profile_hint_mostly_unused,
-        frame_pointers,
         ..
     } = unit.profile.clone();
     let hints = unit.pkg.hints().cloned().unwrap_or_default();
@@ -1317,47 +1308,14 @@ fn build_base_args(
         cmd.arg("-C").arg("prefer-dynamic");
     }
 
-    if opt_level.as_str() != "0" {
-        cmd.arg("-C").arg(&format!("opt-level={}", opt_level));
-    }
+    cmd.args(&compiler_profile_args(build_runner, unit));
 
-    if *panic != PanicStrategy::Unwind {
-        cmd.arg("-C").arg(format!("panic={}", panic));
-    }
     if *panic == PanicStrategy::ImmediateAbort {
         cmd.arg("-Z").arg("unstable-options");
     }
 
-    cmd.args(&lto_args(build_runner, unit));
-
     if let Some(backend) = codegen_backend {
         cmd.arg("-Z").arg(&format!("codegen-backend={}", backend));
-    }
-
-    if let Some(n) = codegen_units {
-        cmd.arg("-C").arg(&format!("codegen-units={}", n));
-    }
-
-    let debuginfo = debuginfo.into_inner();
-    // Shorten the number of arguments if possible.
-    if debuginfo != TomlDebugInfo::None {
-        cmd.arg("-C").arg(format!("debuginfo={debuginfo}"));
-        // This is generally just an optimization on build time so if we don't
-        // pass it then it's ok. The values for the flag (off, packed, unpacked)
-        // may be supported or not depending on the platform, so availability is
-        // checked per-value. For example, at the time of writing this code, on
-        // Windows the only stable valid value for split-debuginfo is "packed",
-        // while on Linux "unpacked" is also stable.
-        if let Some(split) = split_debuginfo {
-            if build_runner
-                .bcx
-                .target_data
-                .info(unit.kind)
-                .supports_debuginfo_split(split)
-            {
-                cmd.arg("-C").arg(format!("split-debuginfo={split}"));
-            }
-        }
     }
 
     if let Some(trim_paths) = trim_paths {
@@ -1366,27 +1324,6 @@ fn build_base_args(
 
     cmd.args(unit.pkg.manifest().lint_rustflags());
     cmd.args(&profile_rustflags);
-
-    // `-C overflow-checks` is implied by the setting of `-C debug-assertions`,
-    // so we only need to provide `-C overflow-checks` if it differs from
-    // the value of `-C debug-assertions` we would provide.
-    if opt_level.as_str() != "0" {
-        if debug_assertions {
-            cmd.args(&["-C", "debug-assertions=on"]);
-            if !overflow_checks {
-                cmd.args(&["-C", "overflow-checks=off"]);
-            }
-        } else if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
-        }
-    } else if !debug_assertions {
-        cmd.args(&["-C", "debug-assertions=off"]);
-        if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
-        }
-    } else if !overflow_checks {
-        cmd.args(&["-C", "overflow-checks=off"]);
-    }
 
     if test && unit.target.harness() {
         cmd.arg("--test");
@@ -1407,18 +1344,6 @@ fn build_base_args(
 
     cmd.args(&features_args(unit));
     cmd.args(&check_cfg_args(unit));
-
-    let meta = build_runner.files().metadata(unit);
-    cmd.arg("-C")
-        .arg(&format!("metadata={}", meta.c_metadata()));
-    if let Some(c_extra_filename) = meta.c_extra_filename() {
-        cmd.arg("-C")
-            .arg(&format!("extra-filename=-{c_extra_filename}"));
-    }
-
-    if rpath {
-        cmd.arg("-C").arg("rpath");
-    }
 
     cmd.arg("--out-dir")
         .arg(&build_runner.files().output_dir(unit));
@@ -1462,19 +1387,6 @@ fn build_base_args(
         }
     }
 
-    let strip = strip.into_inner();
-    if strip != StripInner::None {
-        cmd.arg("-C").arg(format!("strip={}", strip));
-    }
-
-    if let Some(frame_pointers) = frame_pointers {
-        let val = match frame_pointers {
-            FramePointers::ForceOn => "on",
-            FramePointers::ForceOff => "off",
-        };
-        cmd.arg("-C").arg(format!("force-frame-pointers={}", val));
-    }
-
     if unit.is_std {
         // -Zforce-unstable-if-unmarked prevents the accidental use of
         // unstable crates within the sysroot (such as "extern crate libc" or
@@ -1496,6 +1408,116 @@ fn features_args(unit: &Unit) -> Vec<OsString> {
     for feat in &unit.features {
         args.push(OsString::from("--cfg"));
         args.push(OsString::from(format!("feature=\"{}\"", feat)));
+    }
+
+    args
+}
+
+/// All compiler profile options for the unit passed as `--C <profile_setting>=<setting>`
+fn compiler_profile_args(build_runner: &BuildRunner<'_, '_>, unit: &Unit) -> Vec<OsString> {
+    let Profile {
+        opt_level,
+        ref panic,
+        codegen_units,
+        debug_assertions,
+        overflow_checks,
+        rpath,
+        strip,
+        frame_pointers,
+        debuginfo,
+        split_debuginfo,
+        ..
+    } = unit.profile.clone();
+
+    let mut args = Vec::new();
+    let mut push = |s: &str| {
+        args.push(OsString::from("-C"));
+        args.push(OsString::from(s));
+    };
+
+    if opt_level.as_str() != "0" {
+        push(&format!("opt-level={}", opt_level));
+    }
+
+    if *panic != PanicStrategy::Unwind {
+        push(&format!("panic={}", panic));
+    }
+
+    args.extend(lto_args(build_runner, unit));
+
+    let mut push = |s: &str| {
+        args.push(OsString::from("-C"));
+        args.push(OsString::from(s));
+    };
+
+    if let Some(n) = codegen_units {
+        push(&format!("codegen-units={}", n));
+    }
+
+    let debuginfo = debuginfo.into_inner();
+    // Shorten the number of arguments if possible.
+    if debuginfo != TomlDebugInfo::None {
+        push(&format!("debuginfo={debuginfo}"));
+        // This is generally just an optimization on build time so if we don't
+        // pass it then it's ok. The values for the flag (off, packed, unpacked)
+        // may be supported or not depending on the platform, so availability is
+        // checked per-value. For example, at the time of writing this code, on
+        // Windows the only stable valid value for split-debuginfo is "packed",
+        // while on Linux "unpacked" is also stable.
+        if let Some(split) = split_debuginfo {
+            if build_runner
+                .bcx
+                .target_data
+                .info(unit.kind)
+                .supports_debuginfo_split(split)
+            {
+                push(&format!("split-debuginfo={split}"));
+            }
+        }
+    }
+
+    // `-C overflow-checks` is implied by the setting of `-C debug-assertions`,
+    // so we only need to provide `-C overflow-checks` if it differs from
+    // the value of `-C debug-assertions` we would provide.
+    if opt_level.as_str() != "0" {
+        if debug_assertions {
+            push("debug-assertions=on");
+            if !overflow_checks {
+                push("overflow-checks=off");
+            }
+        } else if overflow_checks {
+            push("overflow-checks=on");
+        }
+    } else if !debug_assertions {
+        push("debug-assertions=off");
+        if overflow_checks {
+            push("overflow-checks=on");
+        }
+    } else if !overflow_checks {
+        push("overflow-checks=off");
+    }
+
+    let meta = build_runner.files().metadata(unit);
+    push(&format!("metadata={}", meta.c_metadata()));
+    if let Some(c_extra_filename) = meta.c_extra_filename() {
+        push(&format!("extra-filename=-{c_extra_filename}"));
+    }
+
+    if rpath {
+        push("rpath");
+    }
+
+    let strip = strip.into_inner();
+    if strip != StripInner::None {
+        push(&format!("strip={}", strip));
+    }
+
+    if let Some(frame_pointers) = frame_pointers {
+        let val = match frame_pointers {
+            FramePointers::ForceOn => "on",
+            FramePointers::ForceOff => "off",
+        };
+        push(&format!("force-frame-pointers={}", val));
     }
 
     args
