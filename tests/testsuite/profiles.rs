@@ -29,7 +29,7 @@ fn profile_overrides() {
         .build();
     p.cargo("build -v").with_stderr_data(str![[r#"
 [COMPILING] test v0.0.0 ([ROOT]/foo)
-[RUNNING] `rustc --crate-name test --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link[..] -C opt-level=1[..] -C debug-assertions=on[..] -C metadata=[..] -C rpath --out-dir [ROOT]/foo/target/debug/deps [..] -L dependency=[ROOT]/foo/target/debug/deps`
+[RUNNING] `rustc --crate-name test --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link[..] -C opt-level=1[..] -C debug-assertions=on[..] -C metadata=[..] -C rpath[..] --out-dir [ROOT]/foo/target/debug/deps -L dependency=[ROOT]/foo/target/debug/deps`
 [FINISHED] `dev` profile [optimized] target(s) in [ELAPSED]s
 
 "#]]).run();
