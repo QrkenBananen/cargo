@@ -277,11 +277,11 @@ fn profile_selection_build_all_targets_release() {
 [RUNNING] `[..][ROOT]/foo/target/release/build/foo-[HASH]/build-script-build`
 [foo 0.0.1] foo custom build PROFILE=release DEBUG=false OPT_LEVEL=3
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3[..]-C codegen-units=2 [..]`
-[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
-[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
+[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--crate-type bin --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]`
 [RUNNING] `[..] rustc --crate-name ex1 --edition=2015 examples/ex1.rs [..]--crate-type bin --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]`
 [FINISHED] `release` profile [optimized] target(s) in [ELAPSED]s
@@ -414,9 +414,9 @@ fn profile_selection_test_release() {
 [foo 0.0.1] foo custom build PROFILE=release DEBUG=false OPT_LEVEL=3
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3[..]-C codegen-units=2 [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
-[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2 --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=2[..] --test [..]`
 [RUNNING] `[..] rustc --crate-name ex1 --edition=2015 examples/ex1.rs [..]--crate-type bin --emit=[..]link -C opt-level=3[..]-C codegen-units=2 [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--crate-type bin --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]`
 [FINISHED] `release` profile [optimized] target(s) in [ELAPSED]s
@@ -486,9 +486,9 @@ fn profile_selection_bench() {
 [foo 0.0.1] foo custom build PROFILE=release DEBUG=false OPT_LEVEL=3
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=4 [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]link -C opt-level=3[..]-C codegen-units=4 [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4 --test [..]`
-[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4 --test [..]`
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4 --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4[..] --test [..]`
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]link -C opt-level=3[..]-C codegen-units=4[..] --test [..]`
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--crate-type bin --emit=[..]link -C opt-level=3 -C panic=abort[..]-C codegen-units=4 [..]`
 [FINISHED] `bench` profile [optimized] target(s) in [ELAPSED]s
 [RUNNING] `[..][ROOT]/foo/target/release/deps/foo-[HASH][EXE] --bench`
@@ -608,10 +608,10 @@ fn profile_selection_check_all_targets_release() {
 [foo 0.0.1] foo custom build PROFILE=release DEBUG=false OPT_LEVEL=3
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]metadata -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--crate-type lib --emit=[..]metadata -C opt-level=3[..]-C codegen-units=2 [..]
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2 --test [..]
-[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2 --test [..]
-[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2 --test [..]
-[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2 --test [..]
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/lib.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2[..] --test [..]
+[RUNNING] `[..] rustc --crate-name test1 --edition=2015 tests/test1.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2[..] --test [..]
+[RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2[..] --test [..]
+[RUNNING] `[..] rustc --crate-name bench1 --edition=2015 benches/bench1.rs [..]--emit=[..]metadata -C opt-level=3[..]-C codegen-units=2[..] --test [..]
 [RUNNING] `[..] rustc --crate-name ex1 --edition=2015 examples/ex1.rs [..]--crate-type bin --emit=[..]metadata -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]
 [RUNNING] `[..] rustc --crate-name foo --edition=2015 src/main.rs [..]--crate-type bin --emit=[..]metadata -C opt-level=3 -C panic=abort[..]-C codegen-units=2 [..]
 [FINISHED] `release` profile [optimized] target(s) in [ELAPSED]s
