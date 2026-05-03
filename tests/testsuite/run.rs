@@ -1104,9 +1104,9 @@ fn example_with_release_flag() {
         .with_stderr_data(str![[r#"
 [LOCKING] 1 package to latest compatible version
 [COMPILING] bar v0.5.0 ([ROOT]/foo/bar)
-[RUNNING] `rustc --crate-name bar --edition=2015 bar/src/bar.rs [..]--crate-type lib --emit=[..]link -C opt-level=3[..] -C metadata=[..] --out-dir [ROOT]/foo/target/release/deps -C strip=debuginfo -L dependency=[ROOT]/foo/target/release/deps`
+[RUNNING] `rustc --crate-name bar --edition=2015 bar/src/bar.rs [..]--crate-type lib --emit=[..]link -C opt-level=3[..] -C metadata=[..] -C strip=debuginfo[..] --out-dir [ROOT]/foo/target/release/deps -L dependency=[ROOT]/foo/target/release/deps`
 [COMPILING] foo v0.0.1 ([ROOT]/foo)
-[RUNNING] `rustc --crate-name a --edition=2015 examples/a.rs [..]--crate-type bin --emit=[..]link -C opt-level=3[..] -C metadata=[..] --out-dir [ROOT]/foo/target/release/examples -C strip=debuginfo -L dependency=[ROOT]/foo/target/release/deps --extern bar=[ROOT]/foo/target/release/deps/libbar-[HASH].rlib`
+[RUNNING] `rustc --crate-name a --edition=2015 examples/a.rs [..]--crate-type bin --emit=[..]link -C opt-level=3[..] -C metadata=[..] -C strip=debuginfo[..] --out-dir [ROOT]/foo/target/release/examples -L dependency=[ROOT]/foo/target/release/deps --extern bar=[ROOT]/foo/target/release/deps/libbar-[HASH].rlib`
 [FINISHED] `release` profile [optimized] target(s) in [ELAPSED]s
 [RUNNING] `target/release/examples/a[EXE]`
 
