@@ -84,7 +84,7 @@ fn manifest_gate_works() {
         .masquerade_as_nightly_cargo(&["panic-immediate-abort"])
         .with_stderr_data(str![[r#"
 [COMPILING] foo v0.0.1 ([ROOT]/foo)
-[RUNNING] `rustc [..]-C panic=immediate-abort -Z unstable-options[..]`
+[RUNNING] `rustc [..]-C panic=immediate-abort[..] -Z unstable-options[..]`
 [FINISHED] `dev` profile [unoptimized + debuginfo] target(s) in [ELAPSED]s
 
 "#]])
@@ -113,7 +113,7 @@ fn cli_gate_works() {
         .masquerade_as_nightly_cargo(&["panic-immediate-abort"])
         .with_stderr_data(str![[r#"
 [COMPILING] foo v0.0.1 ([ROOT]/foo)
-[RUNNING] `rustc [..]-C panic=immediate-abort -Z unstable-options[..]`
+[RUNNING] `rustc [..]-C panic=immediate-abort[..] -Z unstable-options[..]`
 [FINISHED] `dev` profile [unoptimized + debuginfo] target(s) in [ELAPSED]s
 
 "#]])
