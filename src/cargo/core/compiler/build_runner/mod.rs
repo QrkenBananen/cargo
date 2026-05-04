@@ -14,8 +14,8 @@ use crate::util::cache_lock::CacheLockMode;
 use crate::util::errors::CargoResult;
 use anyhow::{Context as _, bail};
 use cargo_util::paths;
-use cargo_util_terminal::ColorChoice;
 use cargo_util_terminal::report::{Level, Message};
+use cargo_util_terminal::{ColorChoice, Verbosity};
 use filetime::FileTime;
 use itertools::Itertools;
 use jobserver::Client;
@@ -242,11 +242,16 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
             if unit.mode.is_doc_test() {
                 let gctx = self.bcx.gctx;
                 let ws = self.bcx.ws;
+                let env = artifact::get_env(&self, unit, self.unit_deps(unit))?;
 
                 let script_metas = self.find_build_script_metadatas(unit);
                 let mut process_builder = self
                     .compilation
                     .rustdoc_process(unit, script_metas.as_ref())?;
+
+                for (var, value) in dbg!(&env) {
+                    process_builder.env(var, value);
+                }
 
                 let color_arg = match gctx.shell().color_choice() {
                     ColorChoice::Always => "always",
@@ -266,6 +271,13 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
 
                 unit.kind.add_target_arg(&mut process_builder);
 
+                if let Some((runtool, runtool_args)) = self.compilation.target_runner(unit.kind) {
+                    process_builder.arg("--test-runtool").arg(runtool);
+                    for arg in runtool_args {
+                        process_builder.arg("--test-runtool-arg").arg(arg);
+                    }
+                }
+
                 if let Some(linker) = self.compilation.target_linker(unit.kind) {
                     let mut joined = OsString::from("linker=");
                     joined.push(linker);
@@ -273,6 +285,10 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
                 }
 
                 add_panic_flags(&mut process_builder, unit);
+
+                if gctx.shell().verbosity() == Verbosity::Quiet {
+                    process_builder.arg("--test-args").arg("--quiet");
+                }
 
                 let mut unstable_opts = false;
                 process_builder.args(&compiler::extern_args(&self, unit, &mut unstable_opts)?);
@@ -325,7 +341,7 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
                         .target_linker(unit.kind)
                         .map(|p| p.to_path_buf()),
                     script_metas,
-                    env: artifact::get_env(&self, unit, self.unit_deps(unit))?,
+                    env,
                 });
             }
 

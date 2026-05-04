@@ -183,33 +183,18 @@ fn run_doc_tests(
             process_builder,
             unstable_opts,
             unit,
-            env,
             ..
         } = doctest_info;
         let mut process_builder = process_builder.clone();
 
         gctx.shell().status("Doc-tests", unit.target.name())?;
 
-        for (var, value) in env {
-            process_builder.env(var, value);
-        }
-
-        if let Some((runtool, runtool_args)) = compilation.target_runner(unit.kind) {
-            process_builder.arg("--test-runtool").arg(runtool);
-            for arg in runtool_args {
-                process_builder.arg("--test-runtool-arg").arg(arg);
-            }
-        }
-        for native_dep in compilation.native_dirs.iter() {
-            process_builder.arg("-L").arg(native_dep);
-        }
-
         for arg in test_args {
             process_builder.arg("--test-args").arg(arg);
         }
 
-        if gctx.shell().verbosity() == Verbosity::Quiet {
-            process_builder.arg("--test-args").arg("--quiet");
+        for native_dep in compilation.native_dirs.iter() {
+            process_builder.arg("-L").arg(native_dep);
         }
 
         if *unstable_opts {
