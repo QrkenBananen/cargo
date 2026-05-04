@@ -1231,21 +1231,6 @@ fn build_base_args(
     let bcx = build_runner.bcx;
     let test = unit.mode.is_any_test();
 
-    let warn = |msg: &str| {
-        bcx.gctx.shell().warn(format!(
-            "{}@{}: {msg}",
-            unit.pkg.package_id().name(),
-            unit.pkg.package_id().version()
-        ))
-    };
-    let unit_capped_warn = |msg: &str| {
-        if unit.show_warnings(bcx.gctx) {
-            warn(msg)
-        } else {
-            Ok(())
-        }
-    };
-
     add_basic_crate_details(cmd, unit);
 
     add_path_args(bcx.ws, unit, cmd);
@@ -1274,7 +1259,7 @@ fn build_base_args(
     unit.kind.add_target_arg(cmd);
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
     add_incremental_flags(cmd, build_runner, unit);
-    add_hint_mostly_unused(cmd, bcx, unit, warn, unit_capped_warn)?;
+    add_hint_mostly_unused(cmd, bcx, unit)?;
     add_strip_flag(cmd, unit);
     add_force_frame_pointers_flag(cmd, unit);
     add_force_unstable_if_unmarked(cmd, unit);
@@ -1341,9 +1326,22 @@ fn add_hint_mostly_unused(
     cmd: &mut ProcessBuilder,
     bcx: &BuildContext<'_, '_>,
     unit: &Unit,
-    warn: impl Fn(&str) -> Result<(), Error>,
-    unit_capped_warn: impl Fn(&str) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    let warn = |msg: &str| {
+        bcx.gctx.shell().warn(format!(
+            "{}@{}: {msg}",
+            unit.pkg.package_id().name(),
+            unit.pkg.package_id().version()
+        ))
+    };
+    let unit_capped_warn = |msg: &str| {
+        if unit.show_warnings(bcx.gctx) {
+            warn(msg)
+        } else {
+            Ok(())
+        }
+    };
+
     let hints = unit.pkg.hints().cloned().unwrap_or_default();
     let profile_hint_mostly_unused = unit.profile.hint_mostly_unused;
 
