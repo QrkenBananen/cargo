@@ -1265,15 +1265,63 @@ fn build_base_args(
         }
     };
 
-    cmd.arg("--crate-name").arg(&unit.target.crate_name());
-
-    let edition = unit.target.edition();
-    edition.cmd_edition_arg(cmd);
+    add_basic_crate_details(cmd, unit);
 
     add_path_args(bcx.ws, unit, cmd);
     add_error_format_and_color(build_runner, cmd);
     add_allow_features(build_runner, cmd);
 
+    let contains_dy_lib = add_crate_type_flags(cmd, unit, test);
+    add_emit_metadata_flags(build_runner, cmd, unit);
+    add_prefer_dynamic_flag(build_runner, cmd, unit, contains_dy_lib);
+
+    add_opt_level_flags(cmd, opt_level);
+    add_panic_flags(cmd, panic);
+    cmd.args(&lto_args(build_runner, unit));
+    add_codegen_flags(cmd, codegen_backend, codegen_units);
+    add_debuginfo_flags(build_runner, cmd, unit, debuginfo, split_debuginfo);
+    add_tomltrim_paths(build_runner, cmd, unit, trim_paths)?;
+    cmd.args(unit.pkg.manifest().lint_rustflags());
+    cmd.args(&profile_rustflags);
+    add_debug_assertion_flags(cmd, opt_level, debug_assertions, overflow_checks);
+    add_test_flags(cmd, unit, panic, test);
+    cmd.args(&features_args(unit));
+    cmd.args(&check_cfg_args(unit));
+    add_metadata_flags(build_runner, cmd, unit);
+    add_rpath_flag(cmd, rpath);
+    add_outdir_flag(build_runner, cmd, unit);
+    unit.kind.add_target_arg(cmd);
+    add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
+    add_incremental_flags(build_runner, cmd, unit, incremental);
+    add_hint_mostly_unused(
+        cmd,
+        bcx,
+        profile_hint_mostly_unused,
+        hints,
+        warn,
+        unit_capped_warn,
+    )?;
+    add_strip_flag(cmd, strip);
+    add_force_frame_pointers_flag(cmd, frame_pointers);
+    add_force_unstable_if_unmarked(cmd, unit);
+
+    Ok(())
+}
+
+fn add_prefer_dynamic_flag(
+    build_runner: &BuildRunner<'_, '_>,
+    cmd: &mut ProcessBuilder,
+    unit: &Unit,
+    contains_dy_lib: bool,
+) {
+    let prefer_dynamic = (unit.target.for_host() && !unit.target.is_custom_build())
+        || (contains_dy_lib && !build_runner.is_primary_package(unit));
+    if prefer_dynamic {
+        cmd.arg("-C").arg("prefer-dynamic");
+    }
+}
+
+fn add_crate_type_flags(cmd: &mut ProcessBuilder, unit: &Unit, test: bool) -> bool {
     let mut contains_dy_lib = false;
     if !test {
         for crate_type in &unit.target.rustc_crate_types() {
@@ -1281,7 +1329,237 @@ fn build_base_args(
             contains_dy_lib |= crate_type == &CrateType::Dylib;
         }
     }
+    contains_dy_lib
+}
 
+fn add_force_unstable_if_unmarked(cmd: &mut ProcessBuilder, unit: &Unit) {
+    if unit.is_std {
+        // -Zforce-unstable-if-unmarked prevents the accidental use of
+        // unstable crates within the sysroot (such as "extern crate libc" or
+        // any non-public crate in the sysroot).
+        //
+        // RUSTC_BOOTSTRAP allows unstable features on stable.
+        cmd.arg("-Z")
+            .arg("force-unstable-if-unmarked")
+            .env("RUSTC_BOOTSTRAP", "1");
+    }
+}
+
+fn add_force_frame_pointers_flag(cmd: &mut ProcessBuilder, frame_pointers: Option<FramePointers>) {
+    if let Some(frame_pointers) = frame_pointers {
+        let val = match frame_pointers {
+            FramePointers::ForceOn => "on",
+            FramePointers::ForceOff => "off",
+        };
+        cmd.arg("-C").arg(format!("force-frame-pointers={}", val));
+    }
+}
+
+fn add_strip_flag(cmd: &mut ProcessBuilder, strip: super::profiles::Strip) {
+    let strip = strip.into_inner();
+    if strip != StripInner::None {
+        cmd.arg("-C").arg(format!("strip={}", strip));
+    }
+}
+
+fn add_hint_mostly_unused(
+    cmd: &mut ProcessBuilder,
+    bcx: &BuildContext<'_, '_>,
+    profile_hint_mostly_unused: Option<bool>,
+    hints: cargo_util_schemas::manifest::Hints,
+    warn: impl Fn(&str) -> Result<(), Error>,
+    unit_capped_warn: impl Fn(&str) -> Result<(), Error>,
+) -> Result<(), Error> {
+    let pkg_hint_mostly_unused = match hints.mostly_unused {
+        None => None,
+        Some(toml::Value::Boolean(b)) => Some(b),
+        Some(v) => {
+            unit_capped_warn(&format!(
+                "ignoring unsupported value type ({}) for 'hints.mostly-unused', which expects a boolean",
+                v.type_str()
+            ))?;
+            None
+        }
+    };
+    Ok(
+        if profile_hint_mostly_unused
+            .or(pkg_hint_mostly_unused)
+            .unwrap_or(false)
+        {
+            if bcx.gctx.cli_unstable().profile_hint_mostly_unused {
+                cmd.arg("-Zhint-mostly-unused");
+            } else {
+                if profile_hint_mostly_unused.is_some() {
+                    // Profiles come from the top-level unit, so we don't use `unit_capped_warn` here.
+                    warn(
+                        "ignoring 'hint-mostly-unused' profile option, pass `-Zprofile-hint-mostly-unused` to enable it",
+                    )?;
+                } else if pkg_hint_mostly_unused.is_some() {
+                    unit_capped_warn(
+                        "ignoring 'hints.mostly-unused', pass `-Zprofile-hint-mostly-unused` to enable it",
+                    )?;
+                }
+            }
+        },
+    )
+}
+
+fn add_incremental_flags(
+    build_runner: &BuildRunner<'_, '_>,
+    cmd: &mut ProcessBuilder,
+    unit: &Unit,
+    incremental: bool,
+) {
+    if incremental {
+        add_codegen_incremental(cmd, build_runner, unit)
+    }
+}
+
+fn add_outdir_flag(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.arg("--out-dir")
+        .arg(&build_runner.files().output_dir(unit));
+}
+
+fn add_rpath_flag(cmd: &mut ProcessBuilder, rpath: bool) {
+    if rpath {
+        cmd.arg("-C").arg("rpath");
+    }
+}
+
+fn add_metadata_flags(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuilder, unit: &Unit) {
+    let meta = build_runner.files().metadata(unit);
+    cmd.arg("-C")
+        .arg(&format!("metadata={}", meta.c_metadata()));
+    if let Some(c_extra_filename) = meta.c_extra_filename() {
+        cmd.arg("-C")
+            .arg(&format!("extra-filename=-{c_extra_filename}"));
+    }
+}
+
+// TODO: Needs better name
+fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, panic: &PanicStrategy, test: bool) {
+    if test && unit.target.harness() {
+        cmd.arg("--test");
+
+        // Cargo has historically never compiled `--test` binaries with
+        // `panic=abort` because the `test` crate itself didn't support it.
+        // Support is now upstream, however, but requires an unstable flag to be
+        // passed when compiling the test. We require, in Cargo, an unstable
+        // flag to pass to rustc, so register that here. Eventually this flag
+        // will simply not be needed when the behavior is stabilized in the Rust
+        // compiler itself.
+        if *panic == PanicStrategy::Abort || *panic == PanicStrategy::ImmediateAbort {
+            cmd.arg("-Z").arg("panic-abort-tests");
+        }
+    } else if test {
+        cmd.arg("--cfg").arg("test");
+    }
+}
+
+fn add_debug_assertion_flags(
+    cmd: &mut ProcessBuilder,
+    opt_level: &InternedString,
+    debug_assertions: bool,
+    overflow_checks: bool,
+) {
+    // `-C overflow-checks` is implied by the setting of `-C debug-assertions`,
+    // so we only need to provide `-C overflow-checks` if it differs from
+    // the value of `-C debug-assertions` we would provide.
+    if opt_level.as_str() != "0" {
+        if debug_assertions {
+            cmd.args(&["-C", "debug-assertions=on"]);
+            if !overflow_checks {
+                cmd.args(&["-C", "overflow-checks=off"]);
+            }
+        } else if overflow_checks {
+            cmd.args(&["-C", "overflow-checks=on"]);
+        }
+    } else if !debug_assertions {
+        cmd.args(&["-C", "debug-assertions=off"]);
+        if overflow_checks {
+            cmd.args(&["-C", "overflow-checks=on"]);
+        }
+    } else if !overflow_checks {
+        cmd.args(&["-C", "overflow-checks=off"]);
+    }
+}
+
+fn add_tomltrim_paths(
+    build_runner: &BuildRunner<'_, '_>,
+    cmd: &mut ProcessBuilder,
+    unit: &Unit,
+    trim_paths: Option<TomlTrimPaths>,
+) -> Result<(), Error> {
+    Ok(if let Some(trim_paths) = trim_paths {
+        trim_paths_args(cmd, build_runner, unit, &trim_paths)?;
+    })
+}
+
+fn add_debuginfo_flags(
+    build_runner: &BuildRunner<'_, '_>,
+    cmd: &mut ProcessBuilder,
+    unit: &Unit,
+    debuginfo: super::profiles::DebugInfo,
+    split_debuginfo: Option<InternedString>,
+) {
+    let debuginfo = debuginfo.into_inner();
+    // Shorten the number of arguments if possible.
+    if debuginfo != TomlDebugInfo::None {
+        cmd.arg("-C").arg(format!("debuginfo={debuginfo}"));
+        // This is generally just an optimization on build time so if we don't
+        // pass it then it's ok. The values for the flag (off, packed, unpacked)
+        // may be supported or not depending on the platform, so availability is
+        // checked per-value. For example, at the time of writing this code, on
+        // Windows the only stable valid value for split-debuginfo is "packed",
+        // while on Linux "unpacked" is also stable.
+        if let Some(split) = split_debuginfo {
+            if build_runner
+                .bcx
+                .target_data
+                .info(unit.kind)
+                .supports_debuginfo_split(split)
+            {
+                cmd.arg("-C").arg(format!("split-debuginfo={split}"));
+            }
+        }
+    }
+}
+
+fn add_codegen_flags(
+    cmd: &mut ProcessBuilder,
+    codegen_backend: Option<InternedString>,
+    codegen_units: Option<u32>,
+) {
+    if let Some(backend) = codegen_backend {
+        cmd.arg("-Z").arg(&format!("codegen-backend={}", backend));
+    }
+
+    if let Some(n) = codegen_units {
+        cmd.arg("-C").arg(&format!("codegen-units={}", n));
+    }
+}
+
+fn add_panic_flags(cmd: &mut ProcessBuilder, panic: &PanicStrategy) {
+    if *panic != PanicStrategy::Unwind {
+        cmd.arg("-C").arg(format!("panic={}", panic));
+    }
+    // TODO: pass unstable_options bool, and add the flag only once
+    if *panic == PanicStrategy::ImmediateAbort {
+        cmd.arg("-Z").arg("unstable-options");
+    }
+}
+
+fn add_opt_level_flags(cmd: &mut ProcessBuilder, opt_level: &InternedString) {
+    if opt_level.as_str() != "0" {
+        cmd.arg("-C").arg(&format!("opt-level={}", opt_level));
+    }
+}
+
+fn add_emit_metadata_flags(
+    build_runner: &BuildRunner<'_, '_>,
+    cmd: &mut ProcessBuilder,
+    unit: &Unit,
+) {
     if unit.mode.is_check() {
         cmd.arg("--emit=dep-info,metadata");
     } else if build_runner.bcx.gctx.cli_unstable().no_embed_metadata {
@@ -1310,183 +1588,13 @@ fn build_base_args(
             cmd.arg("--emit=dep-info,link");
         }
     }
+}
 
-    let prefer_dynamic = (unit.target.for_host() && !unit.target.is_custom_build())
-        || (contains_dy_lib && !build_runner.is_primary_package(unit));
-    if prefer_dynamic {
-        cmd.arg("-C").arg("prefer-dynamic");
-    }
+fn add_basic_crate_details(cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.arg("--crate-name").arg(&unit.target.crate_name());
 
-    if opt_level.as_str() != "0" {
-        cmd.arg("-C").arg(&format!("opt-level={}", opt_level));
-    }
-
-    if *panic != PanicStrategy::Unwind {
-        cmd.arg("-C").arg(format!("panic={}", panic));
-    }
-    if *panic == PanicStrategy::ImmediateAbort {
-        cmd.arg("-Z").arg("unstable-options");
-    }
-
-    cmd.args(&lto_args(build_runner, unit));
-
-    if let Some(backend) = codegen_backend {
-        cmd.arg("-Z").arg(&format!("codegen-backend={}", backend));
-    }
-
-    if let Some(n) = codegen_units {
-        cmd.arg("-C").arg(&format!("codegen-units={}", n));
-    }
-
-    let debuginfo = debuginfo.into_inner();
-    // Shorten the number of arguments if possible.
-    if debuginfo != TomlDebugInfo::None {
-        cmd.arg("-C").arg(format!("debuginfo={debuginfo}"));
-        // This is generally just an optimization on build time so if we don't
-        // pass it then it's ok. The values for the flag (off, packed, unpacked)
-        // may be supported or not depending on the platform, so availability is
-        // checked per-value. For example, at the time of writing this code, on
-        // Windows the only stable valid value for split-debuginfo is "packed",
-        // while on Linux "unpacked" is also stable.
-        if let Some(split) = split_debuginfo {
-            if build_runner
-                .bcx
-                .target_data
-                .info(unit.kind)
-                .supports_debuginfo_split(split)
-            {
-                cmd.arg("-C").arg(format!("split-debuginfo={split}"));
-            }
-        }
-    }
-
-    if let Some(trim_paths) = trim_paths {
-        trim_paths_args(cmd, build_runner, unit, &trim_paths)?;
-    }
-
-    cmd.args(unit.pkg.manifest().lint_rustflags());
-    cmd.args(&profile_rustflags);
-
-    // `-C overflow-checks` is implied by the setting of `-C debug-assertions`,
-    // so we only need to provide `-C overflow-checks` if it differs from
-    // the value of `-C debug-assertions` we would provide.
-    if opt_level.as_str() != "0" {
-        if debug_assertions {
-            cmd.args(&["-C", "debug-assertions=on"]);
-            if !overflow_checks {
-                cmd.args(&["-C", "overflow-checks=off"]);
-            }
-        } else if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
-        }
-    } else if !debug_assertions {
-        cmd.args(&["-C", "debug-assertions=off"]);
-        if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
-        }
-    } else if !overflow_checks {
-        cmd.args(&["-C", "overflow-checks=off"]);
-    }
-
-    if test && unit.target.harness() {
-        cmd.arg("--test");
-
-        // Cargo has historically never compiled `--test` binaries with
-        // `panic=abort` because the `test` crate itself didn't support it.
-        // Support is now upstream, however, but requires an unstable flag to be
-        // passed when compiling the test. We require, in Cargo, an unstable
-        // flag to pass to rustc, so register that here. Eventually this flag
-        // will simply not be needed when the behavior is stabilized in the Rust
-        // compiler itself.
-        if *panic == PanicStrategy::Abort || *panic == PanicStrategy::ImmediateAbort {
-            cmd.arg("-Z").arg("panic-abort-tests");
-        }
-    } else if test {
-        cmd.arg("--cfg").arg("test");
-    }
-
-    cmd.args(&features_args(unit));
-    cmd.args(&check_cfg_args(unit));
-
-    let meta = build_runner.files().metadata(unit);
-    cmd.arg("-C")
-        .arg(&format!("metadata={}", meta.c_metadata()));
-    if let Some(c_extra_filename) = meta.c_extra_filename() {
-        cmd.arg("-C")
-            .arg(&format!("extra-filename=-{c_extra_filename}"));
-    }
-
-    if rpath {
-        cmd.arg("-C").arg("rpath");
-    }
-
-    cmd.arg("--out-dir")
-        .arg(&build_runner.files().output_dir(unit));
-
-    unit.kind.add_target_arg(cmd);
-
-    add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
-
-    if incremental {
-        add_codegen_incremental(cmd, build_runner, unit)
-    }
-
-    let pkg_hint_mostly_unused = match hints.mostly_unused {
-        None => None,
-        Some(toml::Value::Boolean(b)) => Some(b),
-        Some(v) => {
-            unit_capped_warn(&format!(
-                "ignoring unsupported value type ({}) for 'hints.mostly-unused', which expects a boolean",
-                v.type_str()
-            ))?;
-            None
-        }
-    };
-    if profile_hint_mostly_unused
-        .or(pkg_hint_mostly_unused)
-        .unwrap_or(false)
-    {
-        if bcx.gctx.cli_unstable().profile_hint_mostly_unused {
-            cmd.arg("-Zhint-mostly-unused");
-        } else {
-            if profile_hint_mostly_unused.is_some() {
-                // Profiles come from the top-level unit, so we don't use `unit_capped_warn` here.
-                warn(
-                    "ignoring 'hint-mostly-unused' profile option, pass `-Zprofile-hint-mostly-unused` to enable it",
-                )?;
-            } else if pkg_hint_mostly_unused.is_some() {
-                unit_capped_warn(
-                    "ignoring 'hints.mostly-unused', pass `-Zprofile-hint-mostly-unused` to enable it",
-                )?;
-            }
-        }
-    }
-
-    let strip = strip.into_inner();
-    if strip != StripInner::None {
-        cmd.arg("-C").arg(format!("strip={}", strip));
-    }
-
-    if let Some(frame_pointers) = frame_pointers {
-        let val = match frame_pointers {
-            FramePointers::ForceOn => "on",
-            FramePointers::ForceOff => "off",
-        };
-        cmd.arg("-C").arg(format!("force-frame-pointers={}", val));
-    }
-
-    if unit.is_std {
-        // -Zforce-unstable-if-unmarked prevents the accidental use of
-        // unstable crates within the sysroot (such as "extern crate libc" or
-        // any non-public crate in the sysroot).
-        //
-        // RUSTC_BOOTSTRAP allows unstable features on stable.
-        cmd.arg("-Z")
-            .arg("force-unstable-if-unmarked")
-            .env("RUSTC_BOOTSTRAP", "1");
-    }
-
-    Ok(())
+    let edition = unit.target.edition();
+    edition.cmd_edition_arg(cmd);
 }
 
 /// All active features for the unit passed as `--cfg features=<feature-name>`.
