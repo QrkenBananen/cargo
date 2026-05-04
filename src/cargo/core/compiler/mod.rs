@@ -1253,8 +1253,8 @@ fn build_base_args(
     add_allow_features(build_runner, cmd);
 
     let contains_dy_lib = add_crate_type_flags(cmd, unit, test);
-    add_emit_metadata_flags(build_runner, cmd, unit);
-    add_prefer_dynamic_flag(build_runner, cmd, unit, contains_dy_lib);
+    add_emit_metadata_flags(cmd, build_runner, unit);
+    add_prefer_dynamic_flag(cmd, build_runner, unit, contains_dy_lib);
 
     add_opt_level_flags(cmd, unit);
     add_panic_flags(cmd, unit);
@@ -1268,9 +1268,9 @@ fn build_base_args(
     add_test_flags(cmd, unit, test);
     cmd.args(&features_args(unit));
     cmd.args(&check_cfg_args(unit));
-    add_metadata_flags(build_runner, cmd, unit);
+    add_metadata_flags(cmd, build_runner, unit);
     add_rpath_flag(cmd, unit);
-    add_outdir_flag(build_runner, cmd, unit);
+    add_outdir_flag(cmd, build_runner, unit);
     unit.kind.add_target_arg(cmd);
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
     add_incremental_flags(cmd, build_runner, unit);
@@ -1283,8 +1283,8 @@ fn build_base_args(
 }
 
 fn add_prefer_dynamic_flag(
-    build_runner: &BuildRunner<'_, '_>,
     cmd: &mut ProcessBuilder,
+    build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
     contains_dy_lib: bool,
 ) {
@@ -1392,7 +1392,7 @@ fn add_incremental_flags(
     }
 }
 
-fn add_outdir_flag(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_outdir_flag(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     cmd.arg("--out-dir")
         .arg(&build_runner.files().output_dir(unit));
 }
@@ -1404,7 +1404,7 @@ fn add_rpath_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
     }
 }
 
-fn add_metadata_flags(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_metadata_flags(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     let meta = build_runner.files().metadata(unit);
     cmd.arg("-C")
         .arg(&format!("metadata={}", meta.c_metadata()));
@@ -1532,8 +1532,8 @@ fn add_opt_level_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
 }
 
 fn add_emit_metadata_flags(
-    build_runner: &BuildRunner<'_, '_>,
     cmd: &mut ProcessBuilder,
+    build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
 ) {
     if unit.mode.is_check() {
