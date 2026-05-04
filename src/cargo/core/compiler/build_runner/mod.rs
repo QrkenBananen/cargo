@@ -9,10 +9,12 @@ use crate::core::PackageId;
 use crate::core::compiler::compilation::{self, UnitOutput};
 use crate::core::compiler::locking::LockManager;
 use crate::core::compiler::{self, Unit, UserIntent, add_crate_name, add_panic_flags, artifact};
+use crate::util::add_path_args;
 use crate::util::cache_lock::CacheLockMode;
 use crate::util::errors::CargoResult;
 use anyhow::{Context as _, bail};
 use cargo_util::paths;
+use cargo_util_terminal::ColorChoice;
 use cargo_util_terminal::report::{Level, Message};
 use filetime::FileTime;
 use itertools::Itertools;
@@ -238,13 +240,30 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
 
             // Collect information for `rustdoc --test`.
             if unit.mode.is_doc_test() {
+                let gctx = self.bcx.gctx;
+                let ws = self.bcx.ws;
+
                 let script_metas = self.find_build_script_metadatas(unit);
                 let mut process_builder = self
                     .compilation
                     .rustdoc_process(unit, script_metas.as_ref())?;
 
+                let color_arg = match gctx.shell().color_choice() {
+                    ColorChoice::Always => "always",
+                    ColorChoice::Never => "never",
+                    ColorChoice::CargoAuto => "auto",
+                };
+                process_builder.arg("--color").arg(color_arg);
+
                 add_crate_name(&mut process_builder, unit);
+
                 process_builder.arg("--test");
+                add_path_args(ws, unit, &mut process_builder);
+
+                process_builder
+                    .arg("--test-run-directory")
+                    .arg(unit.pkg.root());
+
                 unit.kind.add_target_arg(&mut process_builder);
 
                 if let Some(linker) = self.compilation.target_linker(unit.kind) {

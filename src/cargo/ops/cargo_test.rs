@@ -2,10 +2,10 @@ use crate::core::compiler::{Compilation, Doctest, Unit, UnitHash, UnitOutput};
 use crate::core::{TargetKind, Workspace};
 use crate::ops;
 use crate::util::errors::CargoResult;
-use crate::util::{CliError, CliResult, GlobalContext, add_path_args};
+use crate::util::{CliError, CliResult, GlobalContext};
 use anyhow::format_err;
 use cargo_util::{ProcessBuilder, ProcessError};
-use cargo_util_terminal::{ColorChoice, Verbosity};
+use cargo_util_terminal::Verbosity;
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt::Write;
@@ -177,7 +177,6 @@ fn run_doc_tests(
 ) -> Result<Vec<UnitTestError>, CliError> {
     let gctx = ws.gctx();
     let mut errors = Vec::new();
-    let color = gctx.shell().color_choice();
 
     for doctest_info in &compilation.to_doc_test {
         let Doctest {
@@ -194,18 +193,6 @@ fn run_doc_tests(
         for (var, value) in env {
             process_builder.env(var, value);
         }
-
-        let color_arg = match color {
-            ColorChoice::Always => "always",
-            ColorChoice::Never => "never",
-            ColorChoice::CargoAuto => "auto",
-        };
-        process_builder.arg("--color").arg(color_arg);
-
-        add_path_args(ws, unit, &mut process_builder);
-        process_builder
-            .arg("--test-run-directory")
-            .arg(unit.pkg.root());
 
         if let Some((runtool, runtool_args)) = compilation.target_runner(unit.kind) {
             process_builder.arg("--test-runtool").arg(runtool);
