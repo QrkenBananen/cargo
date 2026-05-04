@@ -1244,20 +1244,20 @@ fn build_base_args(
 
     add_opt_level_flags(cmd, unit);
     add_panic_flags(cmd, unit);
-    cmd.args(&lto_args(build_runner, unit));
+    add_lto_args(cmd, build_runner, unit);
     add_codegen_flags(cmd, unit);
     add_debuginfo_flags(cmd, build_runner, unit);
     add_tomltrim_paths(cmd, build_runner, unit)?;
-    cmd.args(unit.pkg.manifest().lint_rustflags());
-    cmd.args(&unit.profile.rustflags);
+    add_lint_rustflags(cmd, unit);
+    add_rustflags(cmd, unit);
     add_debug_assertion_flags(cmd, unit);
     add_test_flags(cmd, unit, test);
-    cmd.args(&features_args(unit));
-    cmd.args(&check_cfg_args(unit));
+    add_features_args(cmd, unit);
+    add_check_cfg_args(cmd, unit);
     add_metadata_flags(cmd, build_runner, unit);
     add_rpath_flag(cmd, unit);
     add_outdir_flag(cmd, build_runner, unit);
-    unit.kind.add_target_arg(cmd);
+    add_target_arg(cmd, unit);
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
     add_incremental_flags(cmd, build_runner, unit);
     add_hint_mostly_unused(cmd, bcx, unit)?;
@@ -1266,6 +1266,30 @@ fn build_base_args(
     add_force_unstable_if_unmarked(cmd, unit);
 
     Ok(())
+}
+
+fn add_target_arg(cmd: &mut ProcessBuilder, unit: &Unit) {
+    unit.kind.add_target_arg(cmd);
+}
+
+fn add_check_cfg_args(cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.args(&check_cfg_args(unit));
+}
+
+fn add_features_args(cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.args(&features_args(unit));
+}
+
+fn add_rustflags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.args(&unit.profile.rustflags);
+}
+
+fn add_lint_rustflags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    cmd.args(unit.pkg.manifest().lint_rustflags());
+}
+
+fn add_lto_args(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
+    cmd.args(&lto_args(build_runner, unit));
 }
 
 fn add_prefer_dynamic_flag(
