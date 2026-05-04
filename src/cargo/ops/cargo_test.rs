@@ -5,7 +5,7 @@ use crate::util::errors::CargoResult;
 use crate::util::{CliError, CliResult, GlobalContext};
 use anyhow::format_err;
 use cargo_util::{ProcessBuilder, ProcessError};
-use cargo_util_terminal::Verbosity;
+use cargo_util_terminal::{ColorChoice, Verbosity};
 use std::collections::HashMap;
 use std::ffi::OsString;
 use std::fmt::Write;
@@ -180,14 +180,24 @@ fn run_doc_tests(
 
     for doctest_info in &compilation.to_doc_test {
         let Doctest {
-            process_builder,
+            process_builder: prev,
             unstable_opts,
             unit,
+            script_metas,
             ..
         } = doctest_info;
-        let mut process_builder = process_builder.clone();
+        let mut process_builder = compilation.rustdoc_process(unit, script_metas.as_ref())?;
 
         gctx.shell().status("Doc-tests", unit.target.name())?;
+
+        let color_arg = match gctx.shell().color_choice() {
+            ColorChoice::Always => "always",
+            ColorChoice::Never => "never",
+            ColorChoice::CargoAuto => "auto",
+        };
+        process_builder.arg("--color").arg(color_arg);
+
+        process_builder.args(&prev.get_args().collect::<Vec<_>>());
 
         for arg in test_args {
             process_builder.arg("--test-args").arg(arg);
