@@ -5704,3 +5704,33 @@ assertion failed: false
 "#]])
         .run();
 }
+
+#[cargo_test]
+fn rustdoc_test_passes_c_target_cpu() {
+    let p = project()
+        .file(
+            "src/lib.rs",
+            r#"
+            //! ```
+            //! // empty
+            //! ```
+        "#,
+        )
+        .file(
+            ".cargo/config.toml",
+            r#"
+               [build]
+               rustflags = ["-C", "target-cpu=non-existant"] 
+            "#,
+        )
+        .build();
+
+    p.cargo("test --doc -v")
+        .with_status(101)
+        .with_stderr_data(str![[r#"
+...
+[RUNNING] `rustdoc[..] -C target-cpu=non-existant[..]`
+...
+"#]])
+        .run();
+}
