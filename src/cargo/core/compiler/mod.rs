@@ -1231,7 +1231,8 @@ fn build_base_args(
     let bcx = build_runner.bcx;
     let test = unit.mode.is_any_test();
 
-    add_basic_crate_details(cmd, unit);
+    add_crate_name(cmd, unit);
+    add_crate_edition(cmd, unit);
 
     add_path_args(bcx.ws, unit, cmd);
     add_error_format_and_color(build_runner, cmd);
@@ -1564,9 +1565,11 @@ fn add_emit_metadata_flags(
     }
 }
 
-fn add_basic_crate_details(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_crate_name(cmd: &mut ProcessBuilder, unit: &Unit) {
     cmd.arg("--crate-name").arg(&unit.target.crate_name());
+}
 
+fn add_crate_edition(cmd: &mut ProcessBuilder, unit: &Unit) {
     let edition = unit.target.edition();
     edition.cmd_edition_arg(cmd);
 }
