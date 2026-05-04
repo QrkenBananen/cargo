@@ -1229,24 +1229,6 @@ fn build_base_args(
     assert!(!unit.mode.is_run_custom_build());
 
     let bcx = build_runner.bcx;
-    let Profile {
-        ref opt_level,
-        codegen_backend,
-        codegen_units,
-        debuginfo,
-        debug_assertions,
-        split_debuginfo,
-        overflow_checks,
-        rpath,
-        ref panic,
-        incremental,
-        strip,
-        rustflags: profile_rustflags,
-        trim_paths,
-        hint_mostly_unused: profile_hint_mostly_unused,
-        frame_pointers,
-        ..
-    } = unit.profile.clone();
     let hints = unit.pkg.hints().cloned().unwrap_or_default();
     let test = unit.mode.is_any_test();
 
@@ -1275,24 +1257,24 @@ fn build_base_args(
     add_emit_metadata_flags(build_runner, cmd, unit);
     add_prefer_dynamic_flag(build_runner, cmd, unit, contains_dy_lib);
 
-    add_opt_level_flags(cmd, opt_level);
-    add_panic_flags(cmd, panic);
+    add_opt_level_flags(cmd, unit);
+    add_panic_flags(cmd, unit);
     cmd.args(&lto_args(build_runner, unit));
-    add_codegen_flags(cmd, codegen_backend, codegen_units);
-    add_debuginfo_flags(build_runner, cmd, unit, debuginfo, split_debuginfo);
-    add_tomltrim_paths(build_runner, cmd, unit, trim_paths)?;
+    add_codegen_flags(cmd, unit);
+    add_debuginfo_flags(cmd, build_runner, unit);
+    add_tomltrim_paths(cmd, build_runner, unit)?;
     cmd.args(unit.pkg.manifest().lint_rustflags());
-    cmd.args(&profile_rustflags);
-    add_debug_assertion_flags(cmd, opt_level, debug_assertions, overflow_checks);
-    add_test_flags(cmd, unit, panic, test);
+    cmd.args(&unit.profile.rustflags);
+    add_debug_assertion_flags(cmd, unit);
+    add_test_flags(cmd, unit, test);
     cmd.args(&features_args(unit));
     cmd.args(&check_cfg_args(unit));
     add_metadata_flags(build_runner, cmd, unit);
-    add_rpath_flag(cmd, rpath);
+    add_rpath_flag(cmd, unit);
     add_outdir_flag(build_runner, cmd, unit);
     unit.kind.add_target_arg(cmd);
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
-    add_incremental_flags(build_runner, cmd, unit, incremental);
+    add_incremental_flags(cmd, build_runner, unit);
     add_hint_mostly_unused(
         cmd,
         bcx,
@@ -1405,11 +1387,11 @@ fn add_hint_mostly_unused(
 }
 
 fn add_incremental_flags(
-    build_runner: &BuildRunner<'_, '_>,
     cmd: &mut ProcessBuilder,
+    build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
-    incremental: bool,
 ) {
+    let incremental = unit.profile.incremental;
     if incremental {
         add_codegen_incremental(cmd, build_runner, unit)
     }
@@ -1420,7 +1402,8 @@ fn add_outdir_flag(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuilder,
         .arg(&build_runner.files().output_dir(unit));
 }
 
-fn add_rpath_flag(cmd: &mut ProcessBuilder, rpath: bool) {
+fn add_rpath_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let rpath = unit.profile.rpath;
     if rpath {
         cmd.arg("-C").arg("rpath");
     }
@@ -1437,7 +1420,9 @@ fn add_metadata_flags(build_runner: &BuildRunner<'_, '_>, cmd: &mut ProcessBuild
 }
 
 // TODO: Needs better name
-fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, panic: &PanicStrategy, test: bool) {
+fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, test: bool) {
+    let panic = &unit.profile.panic;
+
     if test && unit.target.harness() {
         cmd.arg("--test");
 
@@ -1456,12 +1441,11 @@ fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, panic: &PanicStrategy, 
     }
 }
 
-fn add_debug_assertion_flags(
-    cmd: &mut ProcessBuilder,
-    opt_level: &InternedString,
-    debug_assertions: bool,
-    overflow_checks: bool,
-) {
+fn add_debug_assertion_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let opt_level = &unit.profile.opt_level;
+    let debug_assertions = unit.profile.debug_assertions;
+    let overflow_checks = unit.profile.overflow_checks;
+
     // `-C overflow-checks` is implied by the setting of `-C debug-assertions`,
     // so we only need to provide `-C overflow-checks` if it differs from
     // the value of `-C debug-assertions` we would provide.
@@ -1485,23 +1469,20 @@ fn add_debug_assertion_flags(
 }
 
 fn add_tomltrim_paths(
-    build_runner: &BuildRunner<'_, '_>,
     cmd: &mut ProcessBuilder,
+    build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
-    trim_paths: Option<TomlTrimPaths>,
 ) -> Result<(), Error> {
+    let trim_paths = &unit.profile.trim_paths;
     Ok(if let Some(trim_paths) = trim_paths {
         trim_paths_args(cmd, build_runner, unit, &trim_paths)?;
     })
 }
 
-fn add_debuginfo_flags(
-    build_runner: &BuildRunner<'_, '_>,
-    cmd: &mut ProcessBuilder,
-    unit: &Unit,
-    debuginfo: super::profiles::DebugInfo,
-    split_debuginfo: Option<InternedString>,
-) {
+fn add_debuginfo_flags(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
+    let debuginfo = &unit.profile.debuginfo;
+    let split_debuginfo = unit.profile.split_debuginfo;
+
     let debuginfo = debuginfo.into_inner();
     // Shorten the number of arguments if possible.
     if debuginfo != TomlDebugInfo::None {
@@ -1525,21 +1506,20 @@ fn add_debuginfo_flags(
     }
 }
 
-fn add_codegen_flags(
-    cmd: &mut ProcessBuilder,
-    codegen_backend: Option<InternedString>,
-    codegen_units: Option<u32>,
-) {
+fn add_codegen_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let codegen_backend = &unit.profile.codegen_backend;
     if let Some(backend) = codegen_backend {
         cmd.arg("-Z").arg(&format!("codegen-backend={}", backend));
     }
 
+    let codegen_units = &unit.profile.codegen_units;
     if let Some(n) = codegen_units {
         cmd.arg("-C").arg(&format!("codegen-units={}", n));
     }
 }
 
-fn add_panic_flags(cmd: &mut ProcessBuilder, panic: &PanicStrategy) {
+fn add_panic_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let panic = &unit.profile.panic;
     if *panic != PanicStrategy::Unwind {
         cmd.arg("-C").arg(format!("panic={}", panic));
     }
@@ -1549,7 +1529,8 @@ fn add_panic_flags(cmd: &mut ProcessBuilder, panic: &PanicStrategy) {
     }
 }
 
-fn add_opt_level_flags(cmd: &mut ProcessBuilder, opt_level: &InternedString) {
+fn add_opt_level_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let opt_level = &unit.profile.opt_level;
     if opt_level.as_str() != "0" {
         cmd.arg("-C").arg(&format!("opt-level={}", opt_level));
     }
