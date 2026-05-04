@@ -1,13 +1,14 @@
 //! [`BuildRunner`] is the mutable state used during the build process.
 
 use std::collections::{HashMap, HashSet};
+use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use crate::core::PackageId;
 use crate::core::compiler::compilation::{self, UnitOutput};
 use crate::core::compiler::locking::LockManager;
-use crate::core::compiler::{self, Unit, UserIntent, artifact};
+use crate::core::compiler::{self, Unit, UserIntent, add_crate_name, add_panic_flags, artifact};
 use crate::util::cache_lock::CacheLockMode;
 use crate::util::errors::CargoResult;
 use anyhow::{Context as _, bail};
@@ -242,12 +243,26 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
                     .compilation
                     .rustdoc_process(unit, script_metas.as_ref())?;
 
+                add_crate_name(&mut process_builder, unit);
+                process_builder.arg("--test");
+                unit.kind.add_target_arg(&mut process_builder);
+
+                if let Some(linker) = self.compilation.target_linker(unit.kind) {
+                    let mut joined = OsString::from("linker=");
+                    joined.push(linker);
+                    process_builder.arg("-C").arg(joined);
+                }
+
+                add_panic_flags(&mut process_builder, unit);
+
                 let mut unstable_opts = false;
                 process_builder.args(&compiler::extern_args(&self, unit, &mut unstable_opts)?);
                 process_builder.args(&compiler::lib_search_paths(&self, unit)?);
                 process_builder.args(&compiler::lto_args(&self, unit));
                 process_builder.args(&compiler::features_args(unit));
                 process_builder.args(&compiler::check_cfg_args(unit));
+
+                process_builder.args(unit.pkg.manifest().lint_rustflags());
 
                 if let Some(meta_vec) = script_metas.clone() {
                     for meta in meta_vec {

@@ -1,5 +1,4 @@
 use crate::core::compiler::{Compilation, Doctest, Unit, UnitHash, UnitOutput};
-use crate::core::profiles::PanicStrategy;
 use crate::core::{TargetKind, Workspace};
 use crate::ops;
 use crate::util::errors::CargoResult;
@@ -185,7 +184,6 @@ fn run_doc_tests(
             process_builder,
             unstable_opts,
             unit,
-            linker,
             env,
             ..
         } = doctest_info;
@@ -204,17 +202,10 @@ fn run_doc_tests(
         };
         process_builder.arg("--color").arg(color_arg);
 
-        process_builder
-            .arg("--crate-name")
-            .arg(&unit.target.crate_name());
-        process_builder.arg("--test");
-
         add_path_args(ws, unit, &mut process_builder);
         process_builder
             .arg("--test-run-directory")
             .arg(unit.pkg.root());
-
-        unit.kind.add_target_arg(&mut process_builder);
 
         if let Some((runtool, runtool_args)) = compilation.target_runner(unit.kind) {
             process_builder.arg("--test-runtool").arg(runtool);
@@ -222,18 +213,6 @@ fn run_doc_tests(
                 process_builder.arg("--test-runtool-arg").arg(arg);
             }
         }
-        if let Some(linker) = linker {
-            let mut joined = OsString::from("linker=");
-            joined.push(linker);
-            process_builder.arg("-C").arg(joined);
-        }
-
-        if unit.profile.panic != PanicStrategy::Unwind {
-            process_builder
-                .arg("-C")
-                .arg(format!("panic={}", unit.profile.panic));
-        }
-
         for native_dep in compilation.native_dirs.iter() {
             process_builder.arg("-L").arg(native_dep);
         }
@@ -245,8 +224,6 @@ fn run_doc_tests(
         if gctx.shell().verbosity() == Verbosity::Quiet {
             process_builder.arg("--test-args").arg("--quiet");
         }
-
-        process_builder.args(unit.pkg.manifest().lint_rustflags());
 
         if *unstable_opts {
             process_builder.arg("-Zunstable-options");
