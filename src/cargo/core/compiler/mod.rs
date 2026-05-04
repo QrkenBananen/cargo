@@ -1220,6 +1220,18 @@ fn add_error_format_and_color(build_runner: &BuildRunner<'_, '_>, cmd: &mut Proc
     }
 }
 
+struct Arguments(Vec<OsString>);
+impl Arguments {
+    fn arg<S: Into<OsString>>(&mut self, s: S) -> &mut Self {
+        self.0.push(s.into());
+        self
+    }
+    fn args<I: IntoIterator<Item = S>, S: Into<OsString>>(&mut self, i: I) -> &mut Self {
+        self.0.extend(i.into_iter().map(Into::into));
+        self
+    }
+}
+
 /// Adds essential rustc flags and environment variables to the command to execute.
 fn build_base_args(
     build_runner: &BuildRunner<'_, '_>,
@@ -1231,45 +1243,52 @@ fn build_base_args(
     let bcx = build_runner.bcx;
     let test = unit.mode.is_any_test();
 
-    add_crate_name(cmd, unit);
-    add_crate_edition(cmd, unit);
+    let mut args = Arguments(Default::default());
 
-    add_path_args(bcx.ws, unit, cmd);
-    add_error_format_and_color(build_runner, cmd);
-    add_allow_features(build_runner, cmd);
+    add_crate_name(&mut args, unit);
+    add_crate_edition(&mut args, unit);
 
-    let contains_dy_lib = add_crate_type_flags(cmd, unit, test);
-    add_emit_metadata_flags(cmd, build_runner, unit);
-    add_prefer_dynamic_flag(cmd, build_runner, unit, contains_dy_lib);
+    add_path_args(bcx.ws, unit, args);
+    add_error_format_and_color(build_runner, args);
+    add_allow_features(build_runner, args);
 
-    add_opt_level_flags(cmd, unit);
-    add_panic_flags(cmd, unit);
-    cmd.args(&lto_args(build_runner, unit));
-    add_codegen_flags(cmd, unit);
-    add_debuginfo_flags(cmd, build_runner, unit);
-    add_tomltrim_paths(cmd, build_runner, unit)?;
-    cmd.args(unit.pkg.manifest().lint_rustflags());
-    cmd.args(&unit.profile.rustflags);
-    add_debug_assertion_flags(cmd, unit);
-    add_test_flags(cmd, unit, test);
-    cmd.args(&features_args(unit));
-    cmd.args(&check_cfg_args(unit));
-    add_metadata_flags(cmd, build_runner, unit);
-    add_rpath_flag(cmd, unit);
-    add_outdir_flag(cmd, build_runner, unit);
-    unit.kind.add_target_arg(cmd);
-    add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
-    add_incremental_flags(cmd, build_runner, unit);
-    add_hint_mostly_unused(cmd, bcx, unit)?;
-    add_strip_flag(cmd, unit);
-    add_force_frame_pointers_flag(cmd, unit);
-    add_force_unstable_if_unmarked(cmd, unit);
+    let contains_dy_lib = add_crate_type_flags(&mut args, unit, test);
+    add_emit_metadata_flags(&mut args, build_runner, unit);
+    add_prefer_dynamic_flag(&mut args, build_runner, unit, contains_dy_lib);
+
+    add_opt_level_flags(&mut args, unit);
+    add_panic_flags(&mut args, unit);
+    args.args(&lto_args(build_runner, unit));
+    add_codegen_flags(&mut args, unit);
+    add_debuginfo_flags(&mut args, build_runner, unit);
+    add_tomltrim_paths(&mut args, build_runner, unit)?;
+    args.args(unit.pkg.manifest().lint_rustflags());
+    args.args(&unit.profile.rustflags);
+    add_debug_assertion_flags(&mut args, unit);
+    add_test_flags(&mut args, unit, test);
+    args.args(&features_args(unit));
+    args.args(&check_cfg_args(unit));
+    add_metadata_flags(&mut args, build_runner, unit);
+    add_rpath_flag(&mut args, unit);
+    add_outdir_flag(&mut args, build_runner, unit);
+    unit.kind.add_target_arg(args);
+    add_codegen_linker(
+        &mut args,
+        build_runner,
+        unit,
+        bcx.gctx.target_applies_to_host()?,
+    );
+    add_incremental_flags(&mut args, build_runner, unit);
+    add_hint_mostly_unused(&mut args, bcx, unit)?;
+    add_strip_flag(&mut args, unit);
+    add_force_frame_pointers_flag(&mut args, unit);
+    add_force_unstable_if_unmarked(&mut args, unit);
 
     Ok(())
 }
 
 fn add_prefer_dynamic_flag(
-    cmd: &mut ProcessBuilder,
+    args: &mut Arguments,
     build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
     contains_dy_lib: bool,
@@ -1277,54 +1296,54 @@ fn add_prefer_dynamic_flag(
     let prefer_dynamic = (unit.target.for_host() && !unit.target.is_custom_build())
         || (contains_dy_lib && !build_runner.is_primary_package(unit));
     if prefer_dynamic {
-        cmd.arg("-C").arg("prefer-dynamic");
+        args.arg("-C").arg("prefer-dynamic");
     }
 }
 
-fn add_crate_type_flags(cmd: &mut ProcessBuilder, unit: &Unit, test: bool) -> bool {
+fn add_crate_type_flags(args: &mut Arguments, unit: &Unit, test: bool) -> bool {
     let mut contains_dy_lib = false;
     if !test {
         for crate_type in &unit.target.rustc_crate_types() {
-            cmd.arg("--crate-type").arg(crate_type.as_str());
+            args.arg("--crate-type").arg(crate_type.as_str());
             contains_dy_lib |= crate_type == &CrateType::Dylib;
         }
     }
     contains_dy_lib
 }
 
-fn add_force_unstable_if_unmarked(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_force_unstable_if_unmarked(args: &mut Arguments, unit: &Unit) {
     if unit.is_std {
         // -Zforce-unstable-if-unmarked prevents the accidental use of
         // unstable crates within the sysroot (such as "extern crate libc" or
         // any non-public crate in the sysroot).
         //
         // RUSTC_BOOTSTRAP allows unstable features on stable.
-        cmd.arg("-Z")
+        args.arg("-Z")
             .arg("force-unstable-if-unmarked")
             .env("RUSTC_BOOTSTRAP", "1");
     }
 }
 
-fn add_force_frame_pointers_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_force_frame_pointers_flag(args: &mut Arguments, unit: &Unit) {
     let frame_pointers = &unit.profile.frame_pointers;
     if let Some(frame_pointers) = frame_pointers {
         let val = match frame_pointers {
             FramePointers::ForceOn => "on",
             FramePointers::ForceOff => "off",
         };
-        cmd.arg("-C").arg(format!("force-frame-pointers={}", val));
+        args.arg("-C").arg(format!("force-frame-pointers={}", val));
     }
 }
 
-fn add_strip_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_strip_flag(args: &mut Arguments, unit: &Unit) {
     let strip = unit.profile.strip.into_inner();
     if strip != StripInner::None {
-        cmd.arg("-C").arg(format!("strip={}", strip));
+        args.arg("-C").arg(format!("strip={}", strip));
     }
 }
 
 fn add_hint_mostly_unused(
-    cmd: &mut ProcessBuilder,
+    args: &mut Arguments,
     bcx: &BuildContext<'_, '_>,
     unit: &Unit,
 ) -> Result<(), Error> {
@@ -1363,7 +1382,7 @@ fn add_hint_mostly_unused(
             .unwrap_or(false)
         {
             if bcx.gctx.cli_unstable().profile_hint_mostly_unused {
-                cmd.arg("-Zhint-mostly-unused");
+                args.arg("-Zhint-mostly-unused");
             } else {
                 if profile_hint_mostly_unused.is_some() {
                     // Profiles come from the top-level unit, so we don't use `unit_capped_warn` here.
@@ -1380,45 +1399,41 @@ fn add_hint_mostly_unused(
     )
 }
 
-fn add_incremental_flags(
-    cmd: &mut ProcessBuilder,
-    build_runner: &BuildRunner<'_, '_>,
-    unit: &Unit,
-) {
+fn add_incremental_flags(args: &mut Arguments, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     let incremental = unit.profile.incremental;
     if incremental {
-        add_codegen_incremental(cmd, build_runner, unit)
+        add_codegen_incremental(args, build_runner, unit)
     }
 }
 
-fn add_outdir_flag(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
-    cmd.arg("--out-dir")
+fn add_outdir_flag(args: &mut Arguments, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
+    args.arg("--out-dir")
         .arg(&build_runner.files().output_dir(unit));
 }
 
-fn add_rpath_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_rpath_flag(args: &mut Arguments, unit: &Unit) {
     let rpath = unit.profile.rpath;
     if rpath {
-        cmd.arg("-C").arg("rpath");
+        args.arg("-C").arg("rpath");
     }
 }
 
-fn add_metadata_flags(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
+fn add_metadata_flags(args: &mut Arguments, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     let meta = build_runner.files().metadata(unit);
-    cmd.arg("-C")
+    args.arg("-C")
         .arg(&format!("metadata={}", meta.c_metadata()));
     if let Some(c_extra_filename) = meta.c_extra_filename() {
-        cmd.arg("-C")
+        args.arg("-C")
             .arg(&format!("extra-filename=-{c_extra_filename}"));
     }
 }
 
 // TODO: Needs better name
-fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, test: bool) {
+fn add_test_flags(args: &mut Arguments, unit: &Unit, test: bool) {
     let panic = &unit.profile.panic;
 
     if test && unit.target.harness() {
-        cmd.arg("--test");
+        args.arg("--test");
 
         // Cargo has historically never compiled `--test` binaries with
         // `panic=abort` because the `test` crate itself didn't support it.
@@ -1428,14 +1443,14 @@ fn add_test_flags(cmd: &mut ProcessBuilder, unit: &Unit, test: bool) {
         // will simply not be needed when the behavior is stabilized in the Rust
         // compiler itself.
         if *panic == PanicStrategy::Abort || *panic == PanicStrategy::ImmediateAbort {
-            cmd.arg("-Z").arg("panic-abort-tests");
+            args.arg("-Z").arg("panic-abort-tests");
         }
     } else if test {
-        cmd.arg("--cfg").arg("test");
+        args.arg("--cfg").arg("test");
     }
 }
 
-fn add_debug_assertion_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_debug_assertion_flags(args: &mut Arguments, unit: &Unit) {
     let opt_level = &unit.profile.opt_level;
     let debug_assertions = unit.profile.debug_assertions;
     let overflow_checks = unit.profile.overflow_checks;
@@ -1445,42 +1460,42 @@ fn add_debug_assertion_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
     // the value of `-C debug-assertions` we would provide.
     if opt_level.as_str() != "0" {
         if debug_assertions {
-            cmd.args(&["-C", "debug-assertions=on"]);
+            args.args(&["-C", "debug-assertions=on"]);
             if !overflow_checks {
-                cmd.args(&["-C", "overflow-checks=off"]);
+                args.args(&["-C", "overflow-checks=off"]);
             }
         } else if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
+            args.args(&["-C", "overflow-checks=on"]);
         }
     } else if !debug_assertions {
-        cmd.args(&["-C", "debug-assertions=off"]);
+        args.args(&["-C", "debug-assertions=off"]);
         if overflow_checks {
-            cmd.args(&["-C", "overflow-checks=on"]);
+            args.args(&["-C", "overflow-checks=on"]);
         }
     } else if !overflow_checks {
-        cmd.args(&["-C", "overflow-checks=off"]);
+        args.args(&["-C", "overflow-checks=off"]);
     }
 }
 
 fn add_tomltrim_paths(
-    cmd: &mut ProcessBuilder,
+    args: &mut Arguments,
     build_runner: &BuildRunner<'_, '_>,
     unit: &Unit,
 ) -> Result<(), Error> {
     let trim_paths = &unit.profile.trim_paths;
     Ok(if let Some(trim_paths) = trim_paths {
-        trim_paths_args(cmd, build_runner, unit, &trim_paths)?;
+        trim_paths_args(args, build_runner, unit, &trim_paths)?;
     })
 }
 
-fn add_debuginfo_flags(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
+fn add_debuginfo_flags(args: &mut Arguments, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     let debuginfo = &unit.profile.debuginfo;
     let split_debuginfo = unit.profile.split_debuginfo;
 
     let debuginfo = debuginfo.into_inner();
     // Shorten the number of arguments if possible.
     if debuginfo != TomlDebugInfo::None {
-        cmd.arg("-C").arg(format!("debuginfo={debuginfo}"));
+        args.arg("-C").arg(format!("debuginfo={debuginfo}"));
         // This is generally just an optimization on build time so if we don't
         // pass it then it's ok. The values for the flag (off, packed, unpacked)
         // may be supported or not depending on the platform, so availability is
@@ -1494,49 +1509,45 @@ fn add_debuginfo_flags(cmd: &mut ProcessBuilder, build_runner: &BuildRunner<'_, 
                 .info(unit.kind)
                 .supports_debuginfo_split(split)
             {
-                cmd.arg("-C").arg(format!("split-debuginfo={split}"));
+                args.arg("-C").arg(format!("split-debuginfo={split}"));
             }
         }
     }
 }
 
-fn add_codegen_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_codegen_flags(args: &mut Arguments, unit: &Unit) {
     let codegen_backend = &unit.profile.codegen_backend;
     if let Some(backend) = codegen_backend {
-        cmd.arg("-Z").arg(&format!("codegen-backend={}", backend));
+        args.arg("-Z").arg(&format!("codegen-backend={}", backend));
     }
 
     let codegen_units = &unit.profile.codegen_units;
     if let Some(n) = codegen_units {
-        cmd.arg("-C").arg(&format!("codegen-units={}", n));
+        args.arg("-C").arg(&format!("codegen-units={}", n));
     }
 }
 
-fn add_panic_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_panic_flags(args: &mut Arguments, unit: &Unit) {
     let panic = &unit.profile.panic;
     if *panic != PanicStrategy::Unwind {
-        cmd.arg("-C").arg(format!("panic={}", panic));
+        args.arg("-C").arg(format!("panic={}", panic));
     }
     // TODO: pass unstable_options bool, and add the flag only once
     if *panic == PanicStrategy::ImmediateAbort {
-        cmd.arg("-Z").arg("unstable-options");
+        args.arg("-Z").arg("unstable-options");
     }
 }
 
-fn add_opt_level_flags(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_opt_level_flags(args: &mut Arguments, unit: &Unit) {
     let opt_level = &unit.profile.opt_level;
     if opt_level.as_str() != "0" {
-        cmd.arg("-C").arg(&format!("opt-level={}", opt_level));
+        args.arg("-C").arg(&format!("opt-level={}", opt_level));
     }
 }
 
-fn add_emit_metadata_flags(
-    cmd: &mut ProcessBuilder,
-    build_runner: &BuildRunner<'_, '_>,
-    unit: &Unit,
-) {
+fn add_emit_metadata_flags(args: &mut Arguments, build_runner: &BuildRunner<'_, '_>, unit: &Unit) {
     if unit.mode.is_check() {
-        cmd.arg("--emit=dep-info,metadata");
+        args.arg("--emit=dep-info,metadata");
     } else if build_runner.bcx.gctx.cli_unstable().no_embed_metadata {
         // Nightly rustc supports the -Zembed-metadata=no flag, which tells it to avoid including
         // full metadata in rlib/dylib artifacts, to save space on disk. In this case, metadata
@@ -1548,30 +1559,30 @@ fn add_emit_metadata_flags(
         // metadata, such as binaries, because that would just unnecessarily create empty .rmeta
         // files on disk.
         if unit.benefits_from_no_embed_metadata() {
-            cmd.arg("--emit=dep-info,metadata,link");
-            cmd.args(&["-Z", "embed-metadata=no"]);
+            args.arg("--emit=dep-info,metadata,link");
+            args.args(&["-Z", "embed-metadata=no"]);
         } else {
-            cmd.arg("--emit=dep-info,link");
+            args.arg("--emit=dep-info,link");
         }
     } else {
         // If we don't use -Zembed-metadata=no, we emit .rmeta files only for rlib outputs.
         // This metadata may be used in this session for a pipelined compilation, or it may
         // be used in a future Cargo session as part of a pipelined compile.
         if !unit.requires_upstream_objects() {
-            cmd.arg("--emit=dep-info,metadata,link");
+            args.arg("--emit=dep-info,metadata,link");
         } else {
-            cmd.arg("--emit=dep-info,link");
+            args.arg("--emit=dep-info,link");
         }
     }
 }
 
-fn add_crate_name(cmd: &mut ProcessBuilder, unit: &Unit) {
-    cmd.arg("--crate-name").arg(&unit.target.crate_name());
+fn add_crate_name(args: &mut Arguments, unit: &Unit) {
+    args.arg("--crate-name").arg(&unit.target.crate_name());
 }
 
-fn add_crate_edition(cmd: &mut ProcessBuilder, unit: &Unit) {
+fn add_crate_edition(args: &mut Arguments, unit: &Unit) {
     let edition = unit.target.edition();
-    edition.cmd_edition_arg(cmd);
+    edition.args_edition_arg(args);
 }
 
 /// All active features for the unit passed as `--cfg features=<feature-name>`.
