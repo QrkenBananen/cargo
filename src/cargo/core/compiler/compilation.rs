@@ -39,8 +39,8 @@ impl ToolKind {
 pub struct Doctest {
     /// What's being doctested
     pub unit: Unit,
-    /// Arguments needed to pass to rustdoc to run this test.
-    pub args: Vec<OsString>,
+    /// Process builder for this rustdoc run
+    pub process_builder: ProcessBuilder,
     /// Whether or not -Zunstable-options is needed.
     pub unstable_opts: bool,
     /// The -Clinker value to use.

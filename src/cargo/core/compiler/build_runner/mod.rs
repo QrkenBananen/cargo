@@ -237,37 +237,41 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
 
             // Collect information for `rustdoc --test`.
             if unit.mode.is_doc_test() {
-                let mut unstable_opts = false;
-                let mut args = compiler::extern_args(&self, unit, &mut unstable_opts)?;
-                args.extend(compiler::lib_search_paths(&self, unit)?);
-                args.extend(compiler::lto_args(&self, unit));
-                args.extend(compiler::features_args(unit));
-                args.extend(compiler::check_cfg_args(unit));
-
                 let script_metas = self.find_build_script_metadatas(unit);
+                let mut process_builder = self
+                    .compilation
+                    .rustdoc_process(unit, script_metas.as_ref())?;
+
+                let mut unstable_opts = false;
+                process_builder.args(&compiler::extern_args(&self, unit, &mut unstable_opts)?);
+                process_builder.args(&compiler::lib_search_paths(&self, unit)?);
+                process_builder.args(&compiler::lto_args(&self, unit));
+                process_builder.args(&compiler::features_args(unit));
+                process_builder.args(&compiler::check_cfg_args(unit));
+
                 if let Some(meta_vec) = script_metas.clone() {
                     for meta in meta_vec {
                         if let Some(output) = self.build_script_outputs.lock().unwrap().get(meta) {
                             for cfg in &output.cfgs {
-                                args.push("--cfg".into());
-                                args.push(cfg.into());
+                                process_builder.arg("--cfg");
+                                process_builder.arg(cfg);
                             }
 
                             for check_cfg in &output.check_cfgs {
-                                args.push("--check-cfg".into());
-                                args.push(check_cfg.into());
+                                process_builder.arg("--check-cfg");
+                                process_builder.arg(check_cfg);
                             }
 
                             for (lt, arg) in &output.linker_args {
                                 if lt.applies_to(&unit.target, unit.mode) {
-                                    args.push("-C".into());
-                                    args.push(format!("link-arg={}", arg).into());
+                                    process_builder.arg("-C");
+                                    process_builder.arg(format!("link-arg={}", arg));
                                 }
                             }
                         }
                     }
                 }
-                args.extend(unit.rustdocflags.iter().map(Into::into));
+                process_builder.args(&unit.rustdocflags);
 
                 use super::MessageFormat;
                 let format = match self.bcx.build_config.message_format {
@@ -275,12 +279,12 @@ impl<'a, 'gctx> BuildRunner<'a, 'gctx> {
                     MessageFormat::Human => "human",
                     MessageFormat::Json { .. } => "json",
                 };
-                args.push("--error-format".into());
-                args.push(format.into());
+                process_builder.arg("--error-format");
+                process_builder.arg(format);
 
                 self.compilation.to_doc_test.push(compilation::Doctest {
                     unit: unit.clone(),
-                    args,
+                    process_builder,
                     unstable_opts,
                     linker: self
                         .compilation

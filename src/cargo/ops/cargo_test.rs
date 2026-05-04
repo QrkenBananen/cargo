@@ -182,19 +182,19 @@ fn run_doc_tests(
 
     for doctest_info in &compilation.to_doc_test {
         let Doctest {
-            args,
+            process_builder,
             unstable_opts,
             unit,
             linker,
-            script_metas,
             env,
+            ..
         } = doctest_info;
+        let mut process_builder = process_builder.clone();
 
         gctx.shell().status("Doc-tests", unit.target.name())?;
-        let mut p = compilation.rustdoc_process(unit, script_metas.as_ref())?;
 
         for (var, value) in env {
-            p.env(var, value);
+            process_builder.env(var, value);
         }
 
         let color_arg = match color {
@@ -202,60 +202,64 @@ fn run_doc_tests(
             ColorChoice::Never => "never",
             ColorChoice::CargoAuto => "auto",
         };
-        p.arg("--color").arg(color_arg);
+        process_builder.arg("--color").arg(color_arg);
 
-        p.arg("--crate-name").arg(&unit.target.crate_name());
-        p.arg("--test");
+        process_builder
+            .arg("--crate-name")
+            .arg(&unit.target.crate_name());
+        process_builder.arg("--test");
 
-        add_path_args(ws, unit, &mut p);
-        p.arg("--test-run-directory").arg(unit.pkg.root());
+        add_path_args(ws, unit, &mut process_builder);
+        process_builder
+            .arg("--test-run-directory")
+            .arg(unit.pkg.root());
 
-        unit.kind.add_target_arg(&mut p);
+        unit.kind.add_target_arg(&mut process_builder);
 
         if let Some((runtool, runtool_args)) = compilation.target_runner(unit.kind) {
-            p.arg("--test-runtool").arg(runtool);
+            process_builder.arg("--test-runtool").arg(runtool);
             for arg in runtool_args {
-                p.arg("--test-runtool-arg").arg(arg);
+                process_builder.arg("--test-runtool-arg").arg(arg);
             }
         }
         if let Some(linker) = linker {
             let mut joined = OsString::from("linker=");
             joined.push(linker);
-            p.arg("-C").arg(joined);
+            process_builder.arg("-C").arg(joined);
         }
 
         if unit.profile.panic != PanicStrategy::Unwind {
-            p.arg("-C").arg(format!("panic={}", unit.profile.panic));
+            process_builder
+                .arg("-C")
+                .arg(format!("panic={}", unit.profile.panic));
         }
 
         for native_dep in compilation.native_dirs.iter() {
-            p.arg("-L").arg(native_dep);
+            process_builder.arg("-L").arg(native_dep);
         }
 
         for arg in test_args {
-            p.arg("--test-args").arg(arg);
+            process_builder.arg("--test-args").arg(arg);
         }
 
         if gctx.shell().verbosity() == Verbosity::Quiet {
-            p.arg("--test-args").arg("--quiet");
+            process_builder.arg("--test-args").arg("--quiet");
         }
 
-        p.args(unit.pkg.manifest().lint_rustflags());
-
-        p.args(args);
+        process_builder.args(unit.pkg.manifest().lint_rustflags());
 
         if *unstable_opts {
-            p.arg("-Zunstable-options");
+            process_builder.arg("-Zunstable-options");
         }
 
         if gctx.extra_verbose() {
-            p.display_env_vars();
+            process_builder.display_env_vars();
         }
 
         gctx.shell()
-            .verbose(|shell| shell.status("Running", p.to_string()))?;
+            .verbose(|shell| shell.status("Running", process_builder.to_string()))?;
 
-        if let Err(e) = p.exec() {
+        if let Err(e) = process_builder.exec() {
             let code = fail_fast_code(&e);
             let unit_err = UnitTestError {
                 unit: unit.clone(),
