@@ -1229,7 +1229,6 @@ fn build_base_args(
     assert!(!unit.mode.is_run_custom_build());
 
     let bcx = build_runner.bcx;
-    let hints = unit.pkg.hints().cloned().unwrap_or_default();
     let test = unit.mode.is_any_test();
 
     let warn = |msg: &str| {
@@ -1275,16 +1274,9 @@ fn build_base_args(
     unit.kind.add_target_arg(cmd);
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
     add_incremental_flags(cmd, build_runner, unit);
-    add_hint_mostly_unused(
-        cmd,
-        bcx,
-        profile_hint_mostly_unused,
-        hints,
-        warn,
-        unit_capped_warn,
-    )?;
-    add_strip_flag(cmd, strip);
-    add_force_frame_pointers_flag(cmd, frame_pointers);
+    add_hint_mostly_unused(cmd, bcx, unit, warn, unit_capped_warn)?;
+    add_strip_flag(cmd, unit);
+    add_force_frame_pointers_flag(cmd, unit);
     add_force_unstable_if_unmarked(cmd, unit);
 
     Ok(())
@@ -1327,7 +1319,8 @@ fn add_force_unstable_if_unmarked(cmd: &mut ProcessBuilder, unit: &Unit) {
     }
 }
 
-fn add_force_frame_pointers_flag(cmd: &mut ProcessBuilder, frame_pointers: Option<FramePointers>) {
+fn add_force_frame_pointers_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let frame_pointers = &unit.profile.frame_pointers;
     if let Some(frame_pointers) = frame_pointers {
         let val = match frame_pointers {
             FramePointers::ForceOn => "on",
@@ -1337,8 +1330,8 @@ fn add_force_frame_pointers_flag(cmd: &mut ProcessBuilder, frame_pointers: Optio
     }
 }
 
-fn add_strip_flag(cmd: &mut ProcessBuilder, strip: super::profiles::Strip) {
-    let strip = strip.into_inner();
+fn add_strip_flag(cmd: &mut ProcessBuilder, unit: &Unit) {
+    let strip = unit.profile.strip.into_inner();
     if strip != StripInner::None {
         cmd.arg("-C").arg(format!("strip={}", strip));
     }
@@ -1347,11 +1340,13 @@ fn add_strip_flag(cmd: &mut ProcessBuilder, strip: super::profiles::Strip) {
 fn add_hint_mostly_unused(
     cmd: &mut ProcessBuilder,
     bcx: &BuildContext<'_, '_>,
-    profile_hint_mostly_unused: Option<bool>,
-    hints: cargo_util_schemas::manifest::Hints,
+    unit: &Unit,
     warn: impl Fn(&str) -> Result<(), Error>,
     unit_capped_warn: impl Fn(&str) -> Result<(), Error>,
 ) -> Result<(), Error> {
+    let hints = unit.pkg.hints().cloned().unwrap_or_default();
+    let profile_hint_mostly_unused = unit.profile.hint_mostly_unused;
+
     let pkg_hint_mostly_unused = match hints.mostly_unused {
         None => None,
         Some(toml::Value::Boolean(b)) => Some(b),
