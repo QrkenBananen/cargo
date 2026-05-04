@@ -103,7 +103,7 @@ pub use crate::core::compiler::unit::Unit;
 pub use crate::core::compiler::unit::UnitIndex;
 pub use crate::core::compiler::unit::UnitInterner;
 use crate::core::manifest::TargetSourcePath;
-use crate::core::profiles::{FramePointers, PanicStrategy, Profile, StripInner};
+use crate::core::profiles::{FramePointers, PanicStrategy, StripInner};
 use crate::core::{Feature, PackageId, Target};
 use crate::lints::get_key_value;
 use crate::util::OnceExt;
