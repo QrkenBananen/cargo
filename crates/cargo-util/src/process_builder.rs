@@ -108,17 +108,16 @@ impl ProcessBuilder {
     }
 
     /// (chainable) Adds multiple `args` to the args list.
-    pub fn args<I, T: AsRef<OsStr>>(&mut self, args: I) -> &mut ProcessBuilder
+    pub fn args<I, T: Into<OsString>>(&mut self, args: I) -> &mut ProcessBuilder
     where
         I: IntoIterator<Item = T>,
     {
-        self.args
-            .extend(args.into_iter().map(|t| t.as_ref().to_os_string()));
+        self.args.extend(args.into_iter().map(Into::into));
         self
     }
 
     /// (chainable) Replaces the args list with the given `args`.
-    pub fn args_replace<I, T: AsRef<OsStr>>(&mut self, args: I) -> &mut ProcessBuilder
+    pub fn args_replace<I, T: Into<OsString>>(&mut self, args: I) -> &mut ProcessBuilder
     where
         I: IntoIterator<Item = T>,
     {
@@ -129,10 +128,7 @@ impl ProcessBuilder {
             self.program = program;
             self.wrappers = Vec::new();
         }
-        self.args = args
-            .into_iter()
-            .map(|t| t.as_ref().to_os_string())
-            .collect();
+        self.args = args.into_iter().map(Into::into).collect();
         self
     }
 
