@@ -242,7 +242,7 @@ fn run_doc_tests(
 
         p.args(unit.pkg.manifest().lint_rustflags());
 
-        p.args(args);
+        p.args(&args.get_args().collect::<Vec<_>>());
 
         if *unstable_opts {
             p.arg("-Zunstable-options");
