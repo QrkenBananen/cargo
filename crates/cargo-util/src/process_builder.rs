@@ -108,14 +108,20 @@ impl ProcessBuilder {
     }
 
     /// (chainable) Adds multiple `args` to the args list.
-    pub fn args<T: AsRef<OsStr>>(&mut self, args: &[T]) -> &mut ProcessBuilder {
+    pub fn args<I, T: AsRef<OsStr>>(&mut self, args: I) -> &mut ProcessBuilder
+    where
+        I: IntoIterator<Item = T>,
+    {
         self.args
-            .extend(args.iter().map(|t| t.as_ref().to_os_string()));
+            .extend(args.into_iter().map(|t| t.as_ref().to_os_string()));
         self
     }
 
     /// (chainable) Replaces the args list with the given `args`.
-    pub fn args_replace<T: AsRef<OsStr>>(&mut self, args: &[T]) -> &mut ProcessBuilder {
+    pub fn args_replace<I, T: AsRef<OsStr>>(&mut self, args: I) -> &mut ProcessBuilder
+    where
+        I: IntoIterator<Item = T>,
+    {
         if let Some(program) = self.wrappers.pop() {
             // User intend to replace all args, so we
             // - use the outermost wrapper as the main program, and
@@ -123,7 +129,10 @@ impl ProcessBuilder {
             self.program = program;
             self.wrappers = Vec::new();
         }
-        self.args = args.iter().map(|t| t.as_ref().to_os_string()).collect();
+        self.args = args
+            .into_iter()
+            .map(|t| t.as_ref().to_os_string())
+            .collect();
         self
     }
 
