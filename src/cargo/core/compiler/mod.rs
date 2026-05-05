@@ -1244,26 +1244,9 @@ fn build_base_args(
         rustflags: profile_rustflags,
         trim_paths,
         hint_mostly_unused: profile_hint_mostly_unused,
-        frame_pointers,
         ..
     } = unit.profile.clone();
-    let hints = unit.pkg.hints().cloned().unwrap_or_default();
     let test = unit.mode.is_any_test();
-
-    let warn = |msg: &str| {
-        bcx.gctx.shell().warn(format!(
-            "{}@{}: {msg}",
-            unit.pkg.package_id().name(),
-            unit.pkg.package_id().version()
-        ))
-    };
-    let unit_capped_warn = |msg: &str| {
-        if unit.show_warnings(bcx.gctx) {
-            warn(msg)
-        } else {
-            Ok(())
-        }
-    };
 
     cmd.arg("--crate-name").arg(&unit.target.crate_name());
 
@@ -1427,53 +1410,13 @@ fn build_base_args(
 
     add_codegen_linker(cmd, build_runner, unit, bcx.gctx.target_applies_to_host()?);
 
-    if incremental {
-        add_codegen_incremental(cmd, build_runner, unit)
-    }
+    codegen_incremental(build_runner, unit);
 
-    let pkg_hint_mostly_unused = match hints.mostly_unused {
-        None => None,
-        Some(toml::Value::Boolean(b)) => Some(b),
-        Some(v) => {
-            unit_capped_warn(&format!(
-                "ignoring unsupported value type ({}) for 'hints.mostly-unused', which expects a boolean",
-                v.type_str()
-            ))?;
-            None
-        }
-    };
-    if profile_hint_mostly_unused
-        .or(pkg_hint_mostly_unused)
-        .unwrap_or(false)
-    {
-        if bcx.gctx.cli_unstable().profile_hint_mostly_unused {
-            cmd.arg("-Zhint-mostly-unused");
-        } else {
-            if profile_hint_mostly_unused.is_some() {
-                // Profiles come from the top-level unit, so we don't use `unit_capped_warn` here.
-                warn(
-                    "ignoring 'hint-mostly-unused' profile option, pass `-Zprofile-hint-mostly-unused` to enable it",
-                )?;
-            } else if pkg_hint_mostly_unused.is_some() {
-                unit_capped_warn(
-                    "ignoring 'hints.mostly-unused', pass `-Zprofile-hint-mostly-unused` to enable it",
-                )?;
-            }
-        }
-    }
+    cmd.args(hint_mostly_unused_args(&build_runner, unit)?);
 
-    let strip = strip.into_inner();
-    if strip != StripInner::None {
-        cmd.arg("-C").arg(format!("strip={}", strip));
-    }
+    cmd.args(strip_args(unit));
 
-    if let Some(frame_pointers) = frame_pointers {
-        let val = match frame_pointers {
-            FramePointers::ForceOn => "on",
-            FramePointers::ForceOff => "off",
-        };
-        cmd.arg("-C").arg(format!("force-frame-pointers={}", val));
-    }
+    cmd.args(frame_pointers_args(unit));
 
     if unit.is_std {
         // -Zforce-unstable-if-unmarked prevents the accidental use of
@@ -1487,6 +1430,95 @@ fn build_base_args(
     }
 
     Ok(())
+}
+
+fn codegen_incremental(build_runner: &BuildRunner<'_, '_>, unit: &Unit, incremental: bool) {
+    if incremental {
+        add_codegen_incremental(cmd, build_runner, unit)
+    }
+}
+
+fn hint_mostly_unused_args(
+    build_runner: &BuildRunner<'_, '_>,
+    unit: &Unit,
+) -> Result<impl Iterator<Item = &'static str>, Error> {
+    let bcx = build_runner.bcx;
+    let hints = unit.pkg.hints().cloned().unwrap_or_default();
+
+    let warn = |msg: &str| {
+        bcx.gctx.shell().warn(format!(
+            "{}@{}: {msg}",
+            unit.pkg.package_id().name(),
+            unit.pkg.package_id().version()
+        ))
+    };
+    let unit_capped_warn = |msg: &str| {
+        if unit.show_warnings(bcx.gctx) {
+            warn(msg)
+        } else {
+            Ok(())
+        }
+    };
+
+    let pkg_hint_mostly_unused = match hints.mostly_unused {
+        None => None,
+        Some(toml::Value::Boolean(b)) => Some(b),
+        Some(v) => {
+            unit_capped_warn(&format!(
+                "ignoring unsupported value type ({}) for 'hints.mostly-unused', which expects a boolean",
+                v.type_str()
+            ))?;
+            None
+        }
+    };
+
+    let profile_hint_mostly_unused = unit.profile.hint_mostly_unused;
+    if profile_hint_mostly_unused
+        .or(pkg_hint_mostly_unused)
+        .unwrap_or(false)
+    {
+        if bcx.gctx.cli_unstable().profile_hint_mostly_unused {
+            return Ok(Some("-Zhint-mostly-unused").into_iter());
+        } else {
+            if profile_hint_mostly_unused.is_some() {
+                // Profiles come from the top-level unit, so we don't use `unit_capped_warn` here.
+                warn(
+                    "ignoring 'hint-mostly-unused' profile option, pass `-Zprofile-hint-mostly-unused` to enable it",
+                )?;
+            } else if pkg_hint_mostly_unused.is_some() {
+                unit_capped_warn(
+                    "ignoring 'hints.mostly-unused', pass `-Zprofile-hint-mostly-unused` to enable it",
+                )?;
+            }
+        }
+    }
+    Ok(None.into_iter())
+}
+
+fn strip_args(unit: &Unit) -> impl Iterator<Item = String> {
+    let strip = unit.profile.strip.into_inner();
+    if strip != StripInner::None {
+        Some(["-C".into(), format!("strip={}", strip)])
+            .into_iter()
+            .flatten()
+    } else {
+        None.into_iter().flatten()
+    }
+}
+
+fn frame_pointers_args(unit: &Unit) -> impl Iterator<Item = String> {
+    let frame_pointers = unit.profile.frame_pointers;
+    if let Some(frame_pointers) = frame_pointers {
+        let val = match frame_pointers {
+            FramePointers::ForceOn => "on",
+            FramePointers::ForceOff => "off",
+        };
+        Some(["-C".into(), format!("force-frame-pointers={}", val)])
+            .into_iter()
+            .flatten()
+    } else {
+        None.into_iter().flatten()
+    }
 }
 
 /// All active features for the unit passed as `--cfg features=<feature-name>`.
