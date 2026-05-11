@@ -921,6 +921,7 @@ pub struct TomlProfile {
     pub lto: Option<StringOrBool>,
     pub codegen_backend: Option<String>,
     pub codegen_units: Option<u32>,
+    #[serde(alias = "debug")]
     pub debuginfo: Option<TomlDebugInfo>,
     pub split_debuginfo: Option<String>,
     pub debug_assertions: Option<bool>,
