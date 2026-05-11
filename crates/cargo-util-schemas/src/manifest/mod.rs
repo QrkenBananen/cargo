@@ -921,7 +921,7 @@ pub struct TomlProfile {
     pub lto: Option<StringOrBool>,
     pub codegen_backend: Option<String>,
     pub codegen_units: Option<u32>,
-    pub debug: Option<TomlDebugInfo>,
+    pub debuginfo: Option<TomlDebugInfo>,
     pub split_debuginfo: Option<String>,
     pub debug_assertions: Option<bool>,
     pub rpath: Option<bool>,
@@ -962,8 +962,8 @@ impl TomlProfile {
             self.codegen_units = Some(v);
         }
 
-        if let Some(v) = profile.debug {
-            self.debug = Some(v);
+        if let Some(v) = profile.debuginfo {
+            self.debuginfo = Some(v);
         }
 
         if let Some(v) = profile.debug_assertions {

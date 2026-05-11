@@ -529,7 +529,7 @@ lto = false
             opt_level: Some(cargo_toml::TomlOptLevel("s".to_string())),
             lto: Some(cargo_toml::StringOrBool::Bool(true)),
             codegen_units: Some(5),
-            debug: Some(cargo_toml::TomlDebugInfo::Full),
+            debuginfo: Some(cargo_toml::TomlDebugInfo::Full),
             debug_assertions: Some(true),
             rpath: Some(true),
             panic: Some("abort".to_string()),
@@ -565,14 +565,14 @@ fn profile_env_var_prefix() {
         .build();
     let p: cargo_toml::TomlProfile = gctx.get("profile.dev").unwrap();
     assert_eq!(p.debug_assertions, Some(false));
-    assert_eq!(p.debug, None);
+    assert_eq!(p.debuginfo, None);
 
     let gctx = GlobalContextBuilder::new()
         .env("CARGO_PROFILE_DEV_DEBUG", "1")
         .build();
     let p: cargo_toml::TomlProfile = gctx.get("profile.dev").unwrap();
     assert_eq!(p.debug_assertions, None);
-    assert_eq!(p.debug, Some(cargo_toml::TomlDebugInfo::Limited));
+    assert_eq!(p.debuginfo, Some(cargo_toml::TomlDebugInfo::Limited));
 
     let gctx = GlobalContextBuilder::new()
         .env("CARGO_PROFILE_DEV_DEBUG_ASSERTIONS", "false")
@@ -580,7 +580,7 @@ fn profile_env_var_prefix() {
         .build();
     let p: cargo_toml::TomlProfile = gctx.get("profile.dev").unwrap();
     assert_eq!(p.debug_assertions, Some(false));
-    assert_eq!(p.debug, Some(cargo_toml::TomlDebugInfo::Limited));
+    assert_eq!(p.debuginfo, Some(cargo_toml::TomlDebugInfo::Limited));
 }
 
 #[cargo_test]
@@ -1661,7 +1661,7 @@ fn all_profile_options() {
         lto: Some(cargo_toml::StringOrBool::String("thin".to_string())),
         codegen_backend: Some(String::from("example")),
         codegen_units: Some(123),
-        debug: Some(cargo_toml::TomlDebugInfo::Limited),
+        debuginfo: Some(cargo_toml::TomlDebugInfo::Limited),
         split_debuginfo: Some("packed".to_string()),
         debug_assertions: Some(true),
         rpath: Some(true),
@@ -1751,7 +1751,7 @@ known-hosts = [
 fn debuginfo_parsing() {
     let gctx = GlobalContextBuilder::new().build();
     let p: cargo_toml::TomlProfile = gctx.get("profile.dev").unwrap();
-    assert_eq!(p.debug, None);
+    assert_eq!(p.debuginfo, None);
 
     let env_test_cases = [
         (TomlDebugInfo::None, ["false", "0", "none"].as_slice()),

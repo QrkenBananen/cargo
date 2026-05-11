@@ -545,7 +545,7 @@ fn merge_profile(profile: &mut Profile, toml: &TomlProfile) {
     if toml.codegen_units.is_some() {
         profile.codegen_units = toml.codegen_units;
     }
-    if let Some(debuginfo) = toml.debug {
+    if let Some(debuginfo) = toml.debuginfo {
         profile.debuginfo = DebugInfo::Resolved(debuginfo);
     }
     if let Some(debug_assertions) = toml.debug_assertions {
